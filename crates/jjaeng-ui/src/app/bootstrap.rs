@@ -1,11 +1,12 @@
-use crate::ui::{tokens_for, ColorTokens, StyleTokens};
+use crate::ui::{ColorTokens, StyleTokens, LAYOUT_TOKENS};
 use gtk4::prelude::ObjectExt;
 use jjaeng_core::config::load_app_config;
 use jjaeng_core::editor::tools::Color;
 use jjaeng_core::input::{load_editor_navigation_bindings, EditorNavigationBindings};
 use jjaeng_core::storage::prune_stale_temp_files;
 use jjaeng_core::theme::{
-    load_theme_config, resolve_editor_defaults, EditorDefaults, ThemeConfig, ThemeMode,
+    load_omarchy_color_tokens, load_theme_config, resolve_color_tokens_with_base,
+    resolve_editor_defaults, EditorDefaults, ThemeConfig, ThemeMode,
 };
 
 use super::adaptive::{EditorToolOptionPresets, StrokeColorPreset};
@@ -151,7 +152,11 @@ pub(super) fn resolve_theme_runtime(
         editor_theme_overrides.stroke_width_presets.clone(),
         editor_theme_overrides.text_size_presets.clone(),
     );
-    let (style_tokens, color_tokens) = tokens_for(mode, theme_config.colors.as_ref());
+    let base_color_tokens = load_omarchy_color_tokens()
+        .unwrap_or_else(|| jjaeng_core::theme::default_color_tokens(mode));
+    let style_tokens = LAYOUT_TOKENS;
+    let color_tokens =
+        resolve_color_tokens_with_base(base_color_tokens, mode, theme_config.colors.as_ref());
     let text_input_palette = text_input_palette_from_focus_ring_color(
         &color_tokens.focus_ring_color,
     )

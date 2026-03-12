@@ -1127,6 +1127,8 @@ pub(super) fn render_editor_state(
                             centered_window_geometry_for_capture(&artifact, editor_window_geometry)
                         }),
                 ),
+                false,
+                false,
             );
             *editor_capture_id.borrow_mut() = Some(artifact.capture_id.clone());
             *editor_window.borrow_mut() = Some(editor_window_instance);

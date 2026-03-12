@@ -36,10 +36,29 @@ fn parse_monitor_geometry(monitor: &serde_json::Value) -> Option<(i32, i32, i32,
     let y = i32::try_from(monitor.get("y")?.as_i64()?).ok()?;
     let width = i32::try_from(monitor.get("width")?.as_i64()?).ok()?;
     let height = i32::try_from(monitor.get("height")?.as_i64()?).ok()?;
+    let (reserved_left, reserved_top, reserved_right, reserved_bottom) =
+        parse_monitor_reserved(monitor).unwrap_or((0, 0, 0, 0));
+    let x = x.saturating_add(reserved_left);
+    let y = y.saturating_add(reserved_top);
+    let width = width.saturating_sub(reserved_left.saturating_add(reserved_right));
+    let height = height.saturating_sub(reserved_top.saturating_add(reserved_bottom));
     if width <= 0 || height <= 0 {
         return None;
     }
     Some((x, y, width, height))
+}
+
+fn parse_monitor_reserved(monitor: &serde_json::Value) -> Option<(i32, i32, i32, i32)> {
+    let reserved = monitor.get("reserved")?.as_array()?;
+    if reserved.len() != 4 {
+        return None;
+    }
+    Some((
+        i32::try_from(reserved[0].as_i64()?).ok()?.max(0),
+        i32::try_from(reserved[1].as_i64()?).ok()?.max(0),
+        i32::try_from(reserved[2].as_i64()?).ok()?.max(0),
+        i32::try_from(reserved[3].as_i64()?).ok()?.max(0),
+    ))
 }
 
 fn focused_monitor_geometry_from_json(stdout: &[u8]) -> Option<(i32, i32, i32, i32)> {
@@ -166,11 +185,51 @@ fn apply_hypr_window_surface_props(window_name: &str, selector: &str) {
     }
 }
 
+fn set_hypr_window_prop(window_name: &str, selector: &str, property: &str, value: &str) {
+    let outcome = Command::new("hyprctl")
+        .args(["dispatch", "setprop", selector, property, value])
+        .output();
+
+    match outcome {
+        Ok(result) if result.status.success() => {
+            tracing::debug!(
+                window = window_name,
+                selector = selector,
+                property = property,
+                value = value,
+                "hyprctl setprop applied"
+            );
+        }
+        Ok(result) => {
+            let stderr = String::from_utf8_lossy(&result.stderr);
+            tracing::debug!(
+                window = window_name,
+                selector = selector,
+                property = property,
+                status = result.status.code(),
+                stderr = stderr.trim(),
+                "hyprctl setprop returned non-zero status"
+            );
+        }
+        Err(err) => {
+            tracing::debug!(
+                window = window_name,
+                selector = selector,
+                property = property,
+                ?err,
+                "hyprctl setprop failed"
+            );
+        }
+    }
+}
+
 pub(super) fn request_window_floating_with_geometry(
     window_name: &str,
     expected_title: &str,
     strip_surface: bool,
     geometry: Option<(i32, i32, i32, i32)>,
+    center_after_resize: bool,
+    force_opaque: bool,
 ) {
     if std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_none() {
         tracing::debug!(
@@ -213,16 +272,26 @@ pub(super) fn request_window_floating_with_geometry(
                 if strip_surface {
                     apply_hypr_window_surface_props(&window_name, &selector);
                 }
+                if force_opaque {
+                    set_hypr_window_prop(&window_name, &selector, "opaque", "on");
+                }
                 if let Some((x, y, width, height)) = geometry {
                     let resize_arg =
                         format!("exact {} {},{}", width.max(1), height.max(1), selector);
-                    let move_arg = format!("exact {x} {y},{selector}");
-                    for (dispatcher, arg) in [
-                        ("resizewindowpixel", resize_arg),
-                        ("movewindowpixel", move_arg),
-                    ] {
+                    let mut dispatches = vec![("resizewindowpixel", resize_arg)];
+                    if center_after_resize {
+                        dispatches.push(("focuswindow", selector.clone()));
+                        dispatches.push(("centerwindow", String::new()));
+                    } else {
+                        dispatches.push(("movewindowpixel", format!("exact {x} {y},{selector}")));
+                    }
+                    for (dispatcher, arg) in dispatches {
                         let outcome = Command::new("hyprctl")
-                            .args(["dispatch", dispatcher, &arg])
+                            .args(if arg.is_empty() {
+                                vec!["dispatch", dispatcher]
+                            } else {
+                                vec!["dispatch", dispatcher, arg.as_str()]
+                            })
                             .output();
                         match outcome {
                             Ok(result) if result.status.success() => {
@@ -371,6 +440,18 @@ mod tests {
         ]"#;
 
         assert_eq!(focused_monitor_geometry_from_json(stdout), None);
+    }
+
+    #[test]
+    fn focused_monitor_geometry_from_json_uses_reserved_work_area() {
+        let stdout = br#"[
+            {"name":"DP-1","focused":true,"x":0,"y":0,"width":7680,"height":2160,"reserved":[0,26,0,0]}
+        ]"#;
+
+        assert_eq!(
+            focused_monitor_geometry_from_json(stdout),
+            Some((0, 26, 7680, 2134))
+        );
     }
 
     #[test]

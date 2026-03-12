@@ -5,12 +5,13 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::config::{config_env_dirs, existing_app_config_path, ConfigPathError};
+use crate::config::{app_config_path, config_env_dirs, existing_app_config_path, ConfigPathError};
 #[cfg(test)]
 use crate::identity::APP_SLUG;
 use crate::style::{StyleTokens, LAYOUT_TOKENS};
 
 const THEME_CONFIG_FILE: &str = "theme.json";
+const OMARCHY_THEME_COLORS_FILE: &str = "current/theme/colors.toml";
 
 pub type ThemeResult<T> = std::result::Result<T, ThemeError>;
 
@@ -25,6 +26,15 @@ pub struct ColorTokens {
     pub text_color: String,
     pub accent_gradient: String,
     pub accent_text_color: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct OmarchyThemeColors {
+    accent: Option<String>,
+    background: Option<String>,
+    foreground: Option<String>,
+    color8: Option<String>,
+    color12: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -199,14 +209,25 @@ pub fn default_color_tokens(mode: ThemeMode) -> ColorTokens {
     }
 }
 
+pub fn load_omarchy_color_tokens() -> Option<ColorTokens> {
+    let (xdg_config_home, home) = config_env_dirs();
+    load_omarchy_color_tokens_with(xdg_config_home.as_deref(), home.as_deref())
+}
+
 pub fn tokens_for(mode: ThemeMode, overrides: Option<&ThemeColors>) -> (StyleTokens, ColorTokens) {
     (LAYOUT_TOKENS, resolve_color_tokens(mode, overrides))
 }
 
 /// Resolve color tokens for a given mode, applying user overrides on top of defaults.
 pub fn resolve_color_tokens(mode: ThemeMode, overrides: Option<&ThemeColors>) -> ColorTokens {
-    let mut tokens = default_color_tokens(mode);
+    resolve_color_tokens_with_base(default_color_tokens(mode), mode, overrides)
+}
 
+pub fn resolve_color_tokens_with_base(
+    mut tokens: ColorTokens,
+    mode: ThemeMode,
+    overrides: Option<&ThemeColors>,
+) -> ColorTokens {
     if let Some(colors) = overrides {
         apply_overrides(&mut tokens, &colors.common);
         let mode_overrides = match mode {
@@ -217,6 +238,109 @@ pub fn resolve_color_tokens(mode: ThemeMode, overrides: Option<&ThemeColors>) ->
     }
 
     tokens
+}
+
+fn load_omarchy_color_tokens_with(
+    xdg_config_home: Option<&Path>,
+    home: Option<&Path>,
+) -> Option<ColorTokens> {
+    let path = omarchy_theme_colors_path_with(xdg_config_home, home).ok()?;
+    if !path.exists() {
+        return None;
+    }
+
+    let serialized = match fs::read_to_string(&path) {
+        Ok(serialized) => serialized,
+        Err(err) => {
+            tracing::debug!(?err, ?path, "failed to read omarchy colors.toml");
+            return None;
+        }
+    };
+    let colors = match parse_omarchy_theme_colors(&serialized) {
+        Some(colors) => colors,
+        None => {
+            tracing::debug!(?path, "failed to parse omarchy colors.toml");
+            return None;
+        }
+    };
+    omarchy_color_tokens_from_theme(&colors)
+}
+
+fn omarchy_theme_colors_path_with(
+    xdg_config_home: Option<&Path>,
+    home: Option<&Path>,
+) -> ThemeResult<PathBuf> {
+    app_config_path("omarchy", OMARCHY_THEME_COLORS_FILE, xdg_config_home, home).map_err(|error| {
+        match error {
+            ConfigPathError::MissingHomeDirectory => ThemeError::MissingHomeDirectory,
+        }
+    })
+}
+
+fn parse_omarchy_theme_colors(serialized: &str) -> Option<OmarchyThemeColors> {
+    let mut colors = OmarchyThemeColors::default();
+
+    for line in serialized.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        let Some((key, raw_value)) = line.split_once('=') else {
+            continue;
+        };
+        let value = raw_value.trim().trim_matches('"');
+        if value.is_empty() {
+            continue;
+        }
+
+        match key.trim() {
+            "accent" => colors.accent = Some(value.to_string()),
+            "background" => colors.background = Some(value.to_string()),
+            "foreground" => colors.foreground = Some(value.to_string()),
+            "color8" => colors.color8 = Some(value.to_string()),
+            "color12" => colors.color12 = Some(value.to_string()),
+            _ => {}
+        }
+    }
+
+    Some(colors)
+}
+
+fn omarchy_color_tokens_from_theme(colors: &OmarchyThemeColors) -> Option<ColorTokens> {
+    let accent = colors.accent.as_deref()?;
+    let background = colors.background.as_deref()?;
+    let foreground = colors.foreground.as_deref()?;
+    let accent_highlight = colors.color12.as_deref().unwrap_or(accent);
+    let border_source = colors.color8.as_deref().unwrap_or(foreground);
+
+    Some(ColorTokens {
+        focus_ring_color: accent.to_string(),
+        focus_ring_glow: rgba_from_hex(accent, 0.20)?,
+        border_color: rgba_from_hex(border_source, 0.30)?,
+        panel_background: rgba_from_hex(background, 0.88)?,
+        canvas_background: background.to_string(),
+        text_color: foreground.to_string(),
+        accent_gradient: format!("linear-gradient(135deg, {accent} 0%, {accent_highlight} 100%)"),
+        accent_text_color: background.to_string(),
+    })
+}
+
+fn rgba_from_hex(hex: &str, alpha: f32) -> Option<String> {
+    let (red, green, blue) = parse_hex_triplet(hex)?;
+    Some(format!("rgba({red}, {green}, {blue}, {alpha:.2})"))
+}
+
+fn parse_hex_triplet(hex: &str) -> Option<(u8, u8, u8)> {
+    let value = hex.trim().strip_prefix('#')?;
+    if value.len() != 6 {
+        return None;
+    }
+
+    let red = u8::from_str_radix(&value[0..2], 16).ok()?;
+    let green = u8::from_str_radix(&value[2..4], 16).ok()?;
+    let blue = u8::from_str_radix(&value[4..6], 16).ok()?;
+    Some((red, green, blue))
 }
 
 pub fn resolve_editor_defaults(
@@ -891,6 +1015,67 @@ mod tests {
 
         let light = resolve_color_tokens(ThemeMode::Light, None);
         assert_eq!(light.canvas_background, "#FAFAFA");
+    }
+
+    #[test]
+    fn resolve_color_tokens_with_base_uses_custom_base_before_overrides() {
+        let base = ColorTokens {
+            focus_ring_color: "#111111".into(),
+            focus_ring_glow: "rgba(17, 17, 17, 0.2)".into(),
+            border_color: "rgba(18, 18, 18, 0.3)".into(),
+            panel_background: "rgba(19, 19, 19, 0.8)".into(),
+            canvas_background: "#202020".into(),
+            text_color: "#EFEFEF".into(),
+            accent_gradient: "linear-gradient(135deg, #303030 0%, #404040 100%)".into(),
+            accent_text_color: "#050505".into(),
+        };
+        let overrides = ThemeColors {
+            common: ColorOverrides {
+                text_color: Some("#ABABAB".into()),
+                ..Default::default()
+            },
+            dark: ColorOverrides {
+                canvas_background: Some("#000000".into()),
+                ..Default::default()
+            },
+            light: ColorOverrides::default(),
+        };
+
+        let resolved = resolve_color_tokens_with_base(base, ThemeMode::Dark, Some(&overrides));
+        assert_eq!(resolved.canvas_background, "#000000");
+        assert_eq!(resolved.text_color, "#ABABAB");
+        assert_eq!(resolved.accent_text_color, "#050505");
+    }
+
+    #[test]
+    fn load_omarchy_color_tokens_with_reads_current_theme_palette() {
+        with_temp_root(|root| {
+            let path = omarchy_theme_colors_path_with(Some(root), None).unwrap();
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).unwrap();
+            }
+            fs::write(
+                &path,
+                r##"
+accent = "#7aa2f7"
+foreground = "#a9b1d6"
+background = "#1a1b26"
+color8 = "#444b6a"
+color12 = "#7da6ff"
+"##,
+            )
+            .unwrap();
+
+            let resolved = load_omarchy_color_tokens_with(Some(root), None).expect("omarchy");
+            assert_eq!(resolved.canvas_background, "#1a1b26");
+            assert_eq!(resolved.text_color, "#a9b1d6");
+            assert_eq!(resolved.focus_ring_color, "#7aa2f7");
+            assert_eq!(resolved.accent_text_color, "#1a1b26");
+            assert_eq!(
+                resolved.accent_gradient,
+                "linear-gradient(135deg, #7aa2f7 0%, #7da6ff 100%)"
+            );
+        });
     }
 
     #[test]

@@ -278,16 +278,36 @@ struct PreviewWindowBuild {
     toast_label: gtk4::Label,
     quick_copy_button: Button,
     quick_save_button: Button,
-    copy_button: Button,
-    save_button: Button,
 }
 
 struct PreviewControlsBuild {
     controls_revealer: Revealer,
     quick_copy_button: Button,
     quick_save_button: Button,
-    copy_button: Button,
-    save_button: Button,
+}
+
+fn build_preview_quick_action_button(
+    label: &str,
+    shortcut: char,
+    tooltip: &str,
+    suggested: bool,
+) -> Button {
+    let button = Button::new();
+    button.add_css_class("preview-quick-action");
+    if suggested {
+        button.add_css_class("suggested-action");
+    }
+    button.set_tooltip_text(Some(tooltip));
+
+    let content = GtkBox::new(Orientation::Horizontal, 6);
+    let label_widget = gtk4::Label::new(Some(label));
+    let shortcut_widget = gtk4::Label::new(Some(&format!("({})", shortcut.to_ascii_uppercase())));
+    shortcut_widget.add_css_class("preview-shortcut-hint");
+    content.append(&label_widget);
+    content.append(&shortcut_widget);
+    button.set_child(Some(&content));
+
+    button
 }
 
 fn build_preview_controls(context: &PreviewRenderContext) -> PreviewControlsBuild {
@@ -305,14 +325,18 @@ fn build_preview_controls(context: &PreviewRenderContext) -> PreviewControlsBuil
     top_controls_wrap.add_css_class("preview-top-controls");
     top_controls_wrap.add_css_class("preview-action-group");
 
-    let quick_save_button = Button::with_label("Save");
-    quick_save_button.add_css_class("preview-quick-action");
-    quick_save_button.add_css_class("suggested-action");
-    quick_save_button.set_tooltip_text(Some("Save to the screenshot folder and close"));
-
-    let quick_copy_button = Button::with_label("Copy");
-    quick_copy_button.add_css_class("preview-quick-action");
-    quick_copy_button.set_tooltip_text(Some("Copy to the clipboard and close"));
+    let quick_save_button = build_preview_quick_action_button(
+        "Save",
+        's',
+        "Save to the screenshot folder and close (S)",
+        true,
+    );
+    let quick_copy_button = build_preview_quick_action_button(
+        "Copy",
+        'c',
+        "Copy to the clipboard and close (C)",
+        false,
+    );
 
     top_controls_wrap.append(&quick_save_button);
     top_controls_wrap.append(&quick_copy_button);
@@ -320,23 +344,8 @@ fn build_preview_controls(context: &PreviewRenderContext) -> PreviewControlsBuil
     let controls_spacer = GtkBox::new(Orientation::Vertical, 0);
     controls_spacer.set_vexpand(true);
 
-    let bottom_controls_wrap = GtkBox::new(Orientation::Horizontal, context.style_tokens.spacing_8);
-    bottom_controls_wrap.set_halign(Align::Center);
-    bottom_controls_wrap.set_valign(Align::End);
-    bottom_controls_wrap.add_css_class("preview-action-group");
-    let preview_save_button = Button::with_label("Save");
-    preview_save_button.set_hexpand(true);
-    preview_save_button.add_css_class("suggested-action");
-    preview_save_button.set_tooltip_text(Some("Save to the screenshot folder and close"));
-    let preview_copy_button = Button::with_label("Copy");
-    preview_copy_button.set_hexpand(true);
-    preview_copy_button.set_tooltip_text(Some("Copy to the clipboard and close"));
-    bottom_controls_wrap.append(&preview_save_button);
-    bottom_controls_wrap.append(&preview_copy_button);
-
     controls_layout.append(&top_controls_wrap);
     controls_layout.append(&controls_spacer);
-    controls_layout.append(&bottom_controls_wrap);
 
     let controls_revealer = Revealer::new();
     controls_revealer.add_css_class("preview-controls-revealer");
@@ -351,8 +360,6 @@ fn build_preview_controls(context: &PreviewRenderContext) -> PreviewControlsBuil
         controls_revealer,
         quick_copy_button,
         quick_save_button,
-        copy_button: preview_copy_button,
-        save_button: preview_save_button,
     }
 }
 
@@ -430,8 +437,6 @@ fn build_preview_window(
         toast_label: preview_toast_label,
         quick_copy_button: preview_controls.quick_copy_button,
         quick_save_button: preview_controls.quick_save_button,
-        copy_button: preview_controls.copy_button,
-        save_button: preview_controls.save_button,
     }
 }
 
@@ -444,8 +449,6 @@ fn connect_preview_window_action_wiring(
         &[
             (&build.quick_save_button, &context.save_button),
             (&build.quick_copy_button, &context.copy_button),
-            (&build.save_button, &context.save_button),
-            (&build.copy_button, &context.copy_button),
         ],
         &context.preview_action_target_capture_id,
         capture_id,
@@ -528,16 +531,14 @@ fn create_preview_window_for_capture(
     let close_guard = connect_preview_window_action_wiring(context, &build, &artifact.capture_id);
     connect_preview_window_interactions(&build);
 
-    set_revealer_visibility(
-        &build.controls_revealer,
-        build.shell.borrow().controls_visible(),
-    );
     build.window.present();
     request_window_floating_with_geometry(
         "preview",
         &build.title,
         true,
         Some(build.floating_geometry),
+        false,
+        false,
     );
 
     context.preview_windows.borrow_mut().insert(

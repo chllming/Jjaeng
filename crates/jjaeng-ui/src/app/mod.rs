@@ -450,7 +450,10 @@ fn should_show_launchpad_for_remote_fallback(command: RemoteCommand) -> bool {
 }
 
 fn is_history_remote_command(command: RemoteCommand) -> bool {
-    matches!(command, RemoteCommand::OpenHistory | RemoteCommand::ToggleHistory)
+    matches!(
+        command,
+        RemoteCommand::OpenHistory | RemoteCommand::ToggleHistory
+    )
 }
 
 fn dispatch_remote_command(
@@ -677,9 +680,7 @@ impl App {
                 tracing::info!("holding app lifecycle for headless history startup");
                 let hold_guard =
                     <gtk4::Application as gtk4::gio::prelude::ApplicationExtManual>::hold(app);
-                history_startup_hold_guard
-                    .borrow_mut()
-                    .replace(hold_guard);
+                history_startup_hold_guard.borrow_mut().replace(hold_guard);
             }
             let gtk_settings = gtk4::Settings::default();
             let theme_mode = resolve_runtime_theme_mode(theme_config.mode, gtk_settings.as_ref());

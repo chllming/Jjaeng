@@ -281,10 +281,14 @@ button.stroke-chip-active {{
 }}
 button.preview-quick-action {{
   min-height: 28px;
-  min-width: 56px;
+  min-width: 76px;
   padding: 0 {spacing_8}px;
   border-radius: 999px;
   font-size: 11px;
+}}
+button.preview-quick-action .preview-shortcut-hint {{
+  opacity: 0.68;
+  font-size: 10px;
 }}
 button.preview-quick-action.suggested-action {{
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
@@ -427,11 +431,37 @@ window.history-window {{
   background: transparent;
 }}
 .history-root {{
-  border-radius: {card_radius}px;
-  border: {border_width}px solid {border_color};
-  background: {panel_background};
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12),
-              0 2px 6px rgba(0, 0, 0, 0.08);
+  border-radius: 0;
+  border: 2px solid alpha({text_color}, 0.82);
+  background: alpha({canvas_background}, 0.95);
+  box-shadow: none;
+}}
+.history-root,
+.history-root label,
+.history-root button {{
+  font-family: monospace;
+  color: {text_color};
+}}
+frame.history-header-card,
+frame.history-tile,
+frame.history-thumbnail-frame {{
+  border-radius: 0;
+  border: 1px solid alpha({text_color}, 0.14);
+  background: alpha({canvas_background}, 0.95);
+}}
+frame.history-header-card > border,
+frame.history-tile > border,
+frame.history-thumbnail-frame > border {{
+  border: none;
+}}
+frame.history-header-card {{
+  background: transparent;
+  border: none;
+}}
+label.history-kicker {{
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.70;
 }}
 label.history-title {{
   font-size: 18px;
@@ -439,41 +469,64 @@ label.history-title {{
 }}
 label.history-subtitle,
 label.history-tile-meta,
-label.history-tile-saved,
+label.history-shortcut-tip,
 label.history-empty-state {{
   opacity: 0.76;
 }}
 label.history-count {{
-  font-size: 11px;
-  opacity: 0.58;
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: {border_width}px solid {border_color};
-  background: rgba(0, 0, 0, 0.04);
-}}
-frame.history-tile,
-frame.history-thumbnail-frame {{
-  border-radius: {control_radius}px;
-  border: {border_width}px solid {border_color};
-  background: rgba(0, 0, 0, 0.03);
-}}
-frame.history-tile > border,
-frame.history-thumbnail-frame > border {{
-  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 1.0;
+  padding: 4px 10px;
+  border-radius: 0;
+  border: 1px solid alpha({text_color}, 0.18);
+  background: alpha({canvas_background}, 0.95);
 }}
 frame.history-tile {{
   min-width: 264px;
 }}
 frame.history-thumbnail-frame {{
-  background: {canvas_background};
+  background: alpha({canvas_background}, 0.98);
 }}
 label.history-tile-title {{
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 650;
 }}
 label.history-tile-meta,
-label.history-tile-saved {{
+label.history-shortcut-tip {{
   font-size: 12px;
+}}
+label.history-status-chip {{
+  padding: 3px 8px;
+  border-radius: 0;
+  border: 1px solid alpha({text_color}, 0.16);
+  font-size: 11px;
+  font-weight: 600;
+}}
+label.history-status-saved {{
+  background: alpha({canvas_background}, 0.95);
+}}
+label.history-status-unsaved {{
+  opacity: 0.72;
+  background: alpha({canvas_background}, 0.95);
+}}
+box.history-info-row {{
+  min-height: 24px;
+}}
+revealer.history-action-revealer {{
+  background: linear-gradient(to top,
+                              rgba(0, 0, 0, 0.74),
+                              rgba(0, 0, 0, 0.52),
+                              rgba(0, 0, 0, 0.0));
+}}
+box.history-action-row button.history-action-button {{
+  min-width: 64px;
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: 0;
+  border: 1px solid alpha({text_color}, 0.16);
+  background: alpha({canvas_background}, 0.98);
 }}
 
 /* ── Toast badge ── */
