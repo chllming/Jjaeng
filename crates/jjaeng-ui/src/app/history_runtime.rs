@@ -39,14 +39,17 @@ pub(super) struct HistoryWindowRuntime {
 }
 
 pub(super) fn present_history_window(context: &HistoryRenderContext, render: &Rc<dyn Fn()>) {
-    if context.history_window.borrow().is_none() {
-        let runtime = build_history_window(context, render);
-        context.history_window.borrow_mut().replace(runtime);
-    }
+    let runtime = if let Some(runtime) = context.history_window.borrow().as_ref().cloned() {
+        runtime
+    } else {
+        close_duplicate_history_windows(&context.app, None);
+        let runtime = build_history_window(context);
+        context.history_window.borrow_mut().replace(runtime.clone());
+        runtime
+    };
 
-    if let Some(runtime) = context.history_window.borrow().as_ref() {
-        runtime.window.present();
-    }
+    close_duplicate_history_windows(&context.app, Some(&runtime.window));
+    runtime.window.present();
     refresh_history_window_if_open(context, render);
 }
 
@@ -100,10 +103,7 @@ pub(super) fn refresh_history_window_if_open(
     }
 }
 
-fn build_history_window(
-    context: &HistoryRenderContext,
-    render: &Rc<dyn Fn()>,
-) -> HistoryWindowRuntime {
+fn build_history_window(context: &HistoryRenderContext) -> HistoryWindowRuntime {
     let window = ApplicationWindow::new(&context.app);
     window.set_title(Some(HISTORY_WINDOW_TITLE));
     window.add_css_class(jjaeng_core::identity::APP_CSS_ROOT);
@@ -184,14 +184,25 @@ fn build_history_window(
         empty_state_label,
         flow_box,
     };
-    refresh_history_window_if_open(
-        &HistoryRenderContext {
-            history_window: Rc::new(RefCell::new(Some(runtime.clone()))),
-            ..context.clone()
-        },
-        render,
-    );
     runtime
+}
+
+fn close_duplicate_history_windows(app: &Application, keep: Option<&ApplicationWindow>) {
+    let keep_ptr = keep.map(|window| window.as_ptr());
+
+    for window in app.windows() {
+        let title = window.title().map(|title| title.to_string());
+        if title.as_deref() != Some(HISTORY_WINDOW_TITLE) {
+            continue;
+        }
+        let Ok(window) = window.downcast::<ApplicationWindow>() else {
+            continue;
+        };
+        if keep_ptr.is_some_and(|ptr| window.as_ptr() == ptr) {
+            continue;
+        }
+        window.close();
+    }
 }
 
 fn build_history_tile(
