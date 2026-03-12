@@ -55,6 +55,7 @@ Options:
   --region, --capture-region    Start with region capture
   --window, --capture-window    Start with window capture
   --launchpad                   Show the launchpad
+  --history, --open-history     Show the screenshot history window
   --daemon                      Run as a hidden GTK daemon with command socket
   --open-preview                Ask a running daemon to show the latest preview
   --edit-latest                 Ask a running daemon to open the latest capture in the editor

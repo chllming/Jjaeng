@@ -1,4 +1,5 @@
 use jjaeng_core::config::load_app_config;
+use jjaeng_core::history::HistoryService;
 use jjaeng_core::identity::APP_SLUG;
 use jjaeng_core::storage::StorageService;
 
@@ -17,6 +18,22 @@ pub(super) fn initialize_storage_service() -> Option<StorageService> {
             tracing::warn!(
                 ?err,
                 "failed to initialize storage service; disabling save/cleanup"
+            );
+            None
+        }
+    }
+}
+
+pub(super) fn initialize_history_service() -> Option<HistoryService> {
+    match HistoryService::with_default_paths() {
+        Ok(service) => {
+            tracing::info!("initialized history service");
+            Some(service)
+        }
+        Err(err) => {
+            tracing::warn!(
+                ?err,
+                "failed to initialize history service; disabling history"
             );
             None
         }

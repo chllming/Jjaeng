@@ -4,6 +4,7 @@ pub mod config;
 pub mod editor;
 pub mod error;
 pub mod geometry;
+pub mod history;
 pub mod identity;
 pub mod input;
 pub mod logging;

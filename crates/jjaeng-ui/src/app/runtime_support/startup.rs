@@ -13,6 +13,7 @@ pub enum StartupCaptureMode {
 pub struct StartupConfig {
     pub capture: StartupCaptureMode,
     pub show_launchpad: bool,
+    pub show_history: bool,
     pub daemon_mode: bool,
     pub remote_command: Option<RemoteCommand>,
     pub print_status_json: bool,
@@ -31,6 +32,7 @@ impl StartupConfig {
         let mut config = Self {
             capture: StartupCaptureMode::None,
             show_launchpad: false,
+            show_history: false,
             daemon_mode: false,
             remote_command: None,
             print_status_json: false,
@@ -52,6 +54,10 @@ impl StartupConfig {
                 }
                 "--launchpad" => {
                     config.show_launchpad = true;
+                }
+                "--history" | "--open-history" => {
+                    config.show_history = true;
+                    config.remote_command = Some(RemoteCommand::OpenHistory);
                 }
                 "--daemon" => {
                     config.daemon_mode = true;
@@ -102,6 +108,13 @@ mod tests {
     fn startup_config_enables_launchpad_flag() {
         let config = StartupConfig::from_iter(["--launchpad"]);
         assert!(config.show_launchpad);
+    }
+
+    #[test]
+    fn startup_config_enables_history_flag() {
+        let config = StartupConfig::from_iter(["--history"]);
+        assert!(config.show_history);
+        assert_eq!(config.remote_command, Some(RemoteCommand::OpenHistory));
     }
 
     #[test]

@@ -5,6 +5,7 @@ use std::rc::Rc;
 use gtk4::prelude::*;
 use jjaeng_core::capture;
 use jjaeng_core::clipboard::WlCopyBackend;
+use jjaeng_core::history::HistoryService;
 use jjaeng_core::preview::{PreviewAction, PreviewActionError, PreviewEvent};
 use jjaeng_core::state::{AppEvent, AppState, StateMachine};
 use jjaeng_core::storage::StorageService;
@@ -27,6 +28,7 @@ pub(super) struct LaunchpadActionExecutor {
     capture_selection: SharedCaptureSelection,
     machine: SharedMachine,
     storage_service: Rc<Option<StorageService>>,
+    history_service: Rc<Option<HistoryService>>,
     status_log: SharedStatusLog,
     preview_windows: Rc<RefCell<HashMap<String, PreviewWindowRuntime>>>,
     runtime_window_state: Rc<RefCell<RuntimeWindowState>>,
@@ -59,6 +61,7 @@ impl LaunchpadActionExecutor {
         capture_selection: SharedCaptureSelection,
         machine: SharedMachine,
         storage_service: Rc<Option<StorageService>>,
+        history_service: Rc<Option<HistoryService>>,
         status_log: SharedStatusLog,
         preview_windows: Rc<RefCell<HashMap<String, PreviewWindowRuntime>>>,
         runtime_window_state: Rc<RefCell<RuntimeWindowState>>,
@@ -73,6 +76,7 @@ impl LaunchpadActionExecutor {
             capture_selection,
             machine,
             storage_service,
+            history_service,
             status_log,
             preview_windows,
             runtime_window_state,
@@ -94,6 +98,15 @@ impl LaunchpadActionExecutor {
         match capture_result {
             Ok(artifact) => {
                 let capture_id = artifact.capture_id.clone();
+                if let Some(history_service) = self.history_service.as_ref().as_ref() {
+                    if let Err(err) = history_service.record_capture(&artifact) {
+                        tracing::warn!(
+                            capture_id = %capture_id,
+                            ?err,
+                            "failed to record capture in history"
+                        );
+                    }
+                }
                 self.runtime_session.borrow_mut().push_capture(artifact);
                 if !transition_with_status(
                     &self.machine,
@@ -310,7 +323,11 @@ impl LaunchpadActionExecutor {
             if let Some(PreviewEvent::Save { capture_id } | PreviewEvent::Copy { capture_id }) =
                 event.as_ref()
             {
-                self.apply_completed_preview_action(capture_id.as_str());
+                self.apply_completed_preview_action(
+                    prepared.action,
+                    &prepared.active_capture,
+                    capture_id.as_str(),
+                );
             }
             on_complete();
             return;
@@ -332,7 +349,7 @@ impl LaunchpadActionExecutor {
                 )
             },
             move |result| {
-                let _ = apply_preview_action_result(
+                let event = apply_preview_action_result(
                     prepared.action,
                     &prepared.active_capture,
                     result,
@@ -341,6 +358,15 @@ impl LaunchpadActionExecutor {
                     &executor.fallback_toast,
                     executor.toast_duration_ms,
                 );
+                if let Some(PreviewEvent::Save { capture_id } | PreviewEvent::Copy { capture_id }) =
+                    event.as_ref()
+                {
+                    executor.apply_completed_preview_action(
+                        prepared.action,
+                        &prepared.active_capture,
+                        capture_id.as_str(),
+                    );
+                }
                 if let Some(on_complete) = on_complete.take() {
                     on_complete();
                 }
@@ -471,6 +497,15 @@ impl LaunchpadActionExecutor {
 
     fn apply_deleted_capture(&self, capture_id: &str) {
         self.runtime_session.borrow_mut().remove_capture(capture_id);
+        if let Some(history_service) = self.history_service.as_ref().as_ref() {
+            if let Err(err) = history_service.remove_entry(capture_id) {
+                tracing::debug!(
+                    capture_id = %capture_id,
+                    ?err,
+                    "failed to remove deleted capture from history"
+                );
+            }
+        }
         close_preview_window_for_capture(
             &self.preview_windows,
             capture_id,
@@ -481,7 +516,46 @@ impl LaunchpadActionExecutor {
         }
     }
 
-    fn apply_completed_preview_action(&self, capture_id: &str) {
+    fn apply_completed_preview_action(
+        &self,
+        action: PreviewAction,
+        active_capture: &capture::CaptureArtifact,
+        capture_id: &str,
+    ) {
+        if matches!(action, PreviewAction::Save) {
+            if let (Some(history_service), Some(storage_service)) = (
+                self.history_service.as_ref().as_ref(),
+                self.storage_service.as_ref().as_ref(),
+            ) {
+                match storage_service.allocate_target_path(capture_id) {
+                    Ok(saved_path) => {
+                        if let Err(err) = history_service.mark_saved(capture_id, &saved_path) {
+                            tracing::debug!(
+                                capture_id = %capture_id,
+                                ?err,
+                                "failed to update saved path in history"
+                            );
+                        }
+                    }
+                    Err(err) => {
+                        tracing::debug!(
+                            capture_id = %capture_id,
+                            ?err,
+                            "failed to resolve saved path for history entry"
+                        );
+                    }
+                }
+            }
+        }
+        if let Some(history_service) = self.history_service.as_ref().as_ref() {
+            if let Err(err) = history_service.record_capture(active_capture) {
+                tracing::debug!(
+                    capture_id = %capture_id,
+                    ?err,
+                    "failed to refresh history artifact after preview action"
+                );
+            }
+        }
         self.runtime_session.borrow_mut().remove_capture(capture_id);
         if let Some(service) = self.storage_service.as_ref() {
             if let Err(err) = service.discard_session_artifacts(capture_id) {

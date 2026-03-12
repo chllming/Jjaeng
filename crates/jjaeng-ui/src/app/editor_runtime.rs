@@ -6,6 +6,7 @@ use std::time::Duration;
 use jjaeng_core::capture;
 use jjaeng_core::editor::tools::CropElement;
 use jjaeng_core::editor::{self, EditorAction, ToolKind, ToolObject};
+use jjaeng_core::history::HistoryService;
 use jjaeng_core::state::StateMachine;
 use jjaeng_core::storage::StorageService;
 
@@ -71,6 +72,7 @@ pub(super) struct EditorRenderContext {
     pub(super) editor_toast: Rc<RefCell<Option<ToastRuntime>>>,
     pub(super) close_editor_button: Button,
     pub(super) storage_service: Rc<Option<StorageService>>,
+    pub(super) history_service: Rc<Option<HistoryService>>,
     pub(super) shared_machine: Rc<RefCell<StateMachine>>,
     pub(super) ocr_engine: Rc<RefCell<Option<jjaeng_core::ocr::OcrEngine>>>,
     pub(super) ocr_language: jjaeng_core::ocr::OcrLanguage,
@@ -958,6 +960,7 @@ pub(super) fn render_editor_state(
                     runtime_session: runtime_session.clone(),
                     shared_machine: shared_machine.clone(),
                     storage_service: storage_service.clone(),
+                    history_service: context.history_service.clone(),
                     status_log: status_log_for_render.clone(),
                     editor_toast: editor_toast_runtime.clone(),
                     editor_tools: editor_tools.clone(),

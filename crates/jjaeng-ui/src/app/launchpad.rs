@@ -22,6 +22,7 @@ pub(super) struct LaunchpadUi {
     pub(super) full_capture_button: Button,
     pub(super) region_capture_button: Button,
     pub(super) window_capture_button: Button,
+    pub(super) history_button: Button,
     pub(super) open_preview_button: Button,
     pub(super) open_editor_button: Button,
     pub(super) close_preview_button: Button,
@@ -54,6 +55,7 @@ impl LaunchpadUi {
         has_capture: bool,
         ocr_available: bool,
     ) {
+        self.history_button.set_sensitive(true);
         self.open_preview_button
             .set_sensitive(matches!(state, AppState::Idle) && has_capture);
         self.open_editor_button
@@ -256,40 +258,47 @@ pub(super) fn build_launchpad_ui(
     info_row.append(&config_panel);
 
     // ── Actions panel (unified, 2 rows) ──
+    let history_button = Button::with_label("History");
+    history_button.set_hexpand(true);
     let open_preview_button = Button::with_label("Open Preview");
     open_preview_button.set_hexpand(true);
     let open_editor_button = Button::with_label("Open Editor");
     open_editor_button.set_hexpand(true);
+
+    let actions_row1 = GtkBox::new(Orientation::Horizontal, style_tokens.spacing_8);
+    actions_row1.append(&history_button);
+    actions_row1.append(&open_preview_button);
+    actions_row1.append(&open_editor_button);
+
     let save_button = Button::with_label("Save");
     save_button.set_hexpand(true);
     let copy_button = Button::with_label("Copy");
     copy_button.set_hexpand(true);
+    let ocr_button = Button::with_label("OCR");
+    ocr_button.set_hexpand(true);
 
-    let actions_row1 = GtkBox::new(Orientation::Horizontal, style_tokens.spacing_8);
-    actions_row1.append(&open_preview_button);
-    actions_row1.append(&open_editor_button);
-    actions_row1.append(&save_button);
-    actions_row1.append(&copy_button);
+    let actions_row2 = GtkBox::new(Orientation::Horizontal, style_tokens.spacing_8);
+    actions_row2.append(&save_button);
+    actions_row2.append(&copy_button);
+    actions_row2.append(&ocr_button);
 
     let close_preview_button = Button::with_label("Close Preview");
     close_preview_button.set_hexpand(true);
     let close_editor_button = Button::with_label("Close Editor");
     close_editor_button.set_hexpand(true);
-    let ocr_button = Button::with_label("OCR");
-    ocr_button.set_hexpand(true);
     let delete_button = Button::with_label("Delete");
     delete_button.set_hexpand(true);
     delete_button.add_css_class("launchpad-danger-button");
 
-    let actions_row2 = GtkBox::new(Orientation::Horizontal, style_tokens.spacing_8);
-    actions_row2.append(&close_preview_button);
-    actions_row2.append(&close_editor_button);
-    actions_row2.append(&ocr_button);
-    actions_row2.append(&delete_button);
+    let actions_row3 = GtkBox::new(Orientation::Horizontal, style_tokens.spacing_8);
+    actions_row3.append(&close_preview_button);
+    actions_row3.append(&close_editor_button);
+    actions_row3.append(&delete_button);
 
     let actions_content = GtkBox::new(Orientation::Vertical, style_tokens.spacing_8);
     actions_content.append(&actions_row1);
     actions_content.append(&actions_row2);
+    actions_content.append(&actions_row3);
     let actions_panel = launchpad_panel(style_tokens, "Actions", &actions_content);
 
     // ── Scrollable content area ──
@@ -337,6 +346,7 @@ pub(super) fn build_launchpad_ui(
         full_capture_button,
         region_capture_button,
         window_capture_button,
+        history_button,
         open_preview_button,
         open_editor_button,
         close_preview_button,
@@ -368,6 +378,7 @@ pub(super) fn connect_launchpad_button<F, R>(
 pub(super) fn connect_launchpad_default_buttons<R: Fn() + 'static + ?Sized>(
     launchpad: &LaunchpadUi,
     launchpad_actions: &LaunchpadActionExecutor,
+    open_history_window: &Rc<dyn Fn()>,
     render: &Rc<R>,
 ) {
     {
@@ -416,6 +427,14 @@ pub(super) fn connect_launchpad_default_buttons<R: Fn() + 'static + ?Sized>(
                     (render.as_ref())();
                 },
             );
+        });
+    }
+    {
+        let open_history_window = open_history_window.clone();
+        let render = render.clone();
+        launchpad.history_button.connect_clicked(move |_| {
+            (open_history_window.as_ref())();
+            (render.as_ref())();
         });
     }
     connect_launchpad_button(

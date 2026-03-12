@@ -7,6 +7,12 @@ pub(crate) struct RuntimeSession {
 }
 
 impl RuntimeSession {
+    pub(crate) fn replace_with_capture(&mut self, artifact: capture::CaptureArtifact) {
+        self.captures.clear();
+        self.active_capture_id = None;
+        self.push_capture(artifact);
+    }
+
     pub(crate) fn push_capture(&mut self, artifact: capture::CaptureArtifact) {
         self.captures
             .retain(|capture| capture.capture_id != artifact.capture_id);
@@ -111,6 +117,19 @@ mod tests {
         runtime.push_capture(artifact("two"));
 
         assert_eq!(runtime.ids_for_display(), vec!["one", "two"]);
+        assert!(runtime
+            .active_capture()
+            .is_some_and(|item| item.capture_id == "two"));
+    }
+
+    #[test]
+    fn runtime_session_replace_with_capture_resets_existing_session() {
+        let mut runtime = RuntimeSession::default();
+
+        runtime.push_capture(artifact("one"));
+        runtime.replace_with_capture(artifact("two"));
+
+        assert_eq!(runtime.ids_for_display(), vec!["two"]);
         assert!(runtime
             .active_capture()
             .is_some_and(|item| item.capture_id == "two"));

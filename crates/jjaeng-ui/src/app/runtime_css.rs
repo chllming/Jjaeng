@@ -422,6 +422,60 @@ button.launchpad-danger-button:active {{
   border-color: rgba(255, 80, 80, 0.34);
 }}
 
+/* ── History window ── */
+window.history-window {{
+  background: transparent;
+}}
+.history-root {{
+  border-radius: {card_radius}px;
+  border: {border_width}px solid {border_color};
+  background: {panel_background};
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12),
+              0 2px 6px rgba(0, 0, 0, 0.08);
+}}
+label.history-title {{
+  font-size: 18px;
+  font-weight: 700;
+}}
+label.history-subtitle,
+label.history-tile-meta,
+label.history-tile-saved,
+label.history-empty-state {{
+  opacity: 0.76;
+}}
+label.history-count {{
+  font-size: 11px;
+  opacity: 0.58;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: {border_width}px solid {border_color};
+  background: rgba(0, 0, 0, 0.04);
+}}
+frame.history-tile,
+frame.history-thumbnail-frame {{
+  border-radius: {control_radius}px;
+  border: {border_width}px solid {border_color};
+  background: rgba(0, 0, 0, 0.03);
+}}
+frame.history-tile > border,
+frame.history-thumbnail-frame > border {{
+  border: none;
+}}
+frame.history-tile {{
+  min-width: 264px;
+}}
+frame.history-thumbnail-frame {{
+  background: {canvas_background};
+}}
+label.history-tile-title {{
+  font-size: 13px;
+  font-weight: 650;
+}}
+label.history-tile-meta,
+label.history-tile-saved {{
+  font-size: 12px;
+}}
+
 /* ── Toast badge ── */
 .toast-badge {{
   border-radius: {control_radius}px;

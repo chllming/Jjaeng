@@ -11,6 +11,7 @@ use jjaeng_core::capture;
 use jjaeng_core::editor::tools::CropElement;
 use jjaeng_core::editor::{self, EditorAction, ToolKind};
 use jjaeng_core::error::AppResult;
+use jjaeng_core::history::HistoryService;
 use jjaeng_core::identity::{APP_CSS_ROOT, APP_ID, APP_NAME};
 use jjaeng_core::input::ShortcutAction;
 use jjaeng_core::preview::PreviewAction;
@@ -26,6 +27,7 @@ mod editor_popup;
 mod editor_runtime;
 mod editor_text_runtime;
 mod editor_viewport;
+mod history_runtime;
 mod hover_controls;
 mod hypr;
 mod input_bridge;
@@ -43,6 +45,7 @@ mod worker;
 use self::bootstrap::*;
 use self::editor_popup::*;
 use self::editor_runtime::*;
+use self::history_runtime::*;
 use self::launchpad::*;
 use self::launchpad_actions::*;
 use self::lifecycle::*;
@@ -302,6 +305,7 @@ struct EditorOutputActionRuntime {
     runtime_session: Rc<RefCell<RuntimeSession>>,
     shared_machine: Rc<RefCell<StateMachine>>,
     storage_service: Rc<Option<StorageService>>,
+    history_service: Rc<Option<HistoryService>>,
     status_log: Rc<RefCell<String>>,
     editor_toast: ToastRuntime,
     editor_tools: Rc<RefCell<editor::EditorTools>>,
@@ -340,7 +344,7 @@ impl EditorOutputActionRuntime {
         };
 
         let tools = self.editor_tools.borrow();
-        execute_editor_output_action(EditorOutputActionContext {
+        let completed = execute_editor_output_action(EditorOutputActionContext {
             action,
             active_capture: &active_capture,
             editor_tools: &tools,
@@ -351,7 +355,45 @@ impl EditorOutputActionRuntime {
             editor_toast: &self.editor_toast,
             toast_duration_ms: self.toast_duration_ms,
             editor_has_unsaved_changes: &self.editor_has_unsaved_changes,
-        })
+        });
+
+        if !completed {
+            return false;
+        }
+
+        if let Some(history_service) = self.history_service.as_ref().as_ref() {
+            if let Err(err) = history_service.record_capture(&active_capture) {
+                tracing::debug!(
+                    capture_id = %active_capture.capture_id,
+                    ?err,
+                    "failed to refresh history after editor output action"
+                );
+            }
+            if matches!(action, EditorAction::Save) {
+                match service.allocate_target_path(&active_capture.capture_id) {
+                    Ok(saved_path) => {
+                        if let Err(err) =
+                            history_service.mark_saved(&active_capture.capture_id, &saved_path)
+                        {
+                            tracing::debug!(
+                                capture_id = %active_capture.capture_id,
+                                ?err,
+                                "failed to update history saved path after editor save"
+                            );
+                        }
+                    }
+                    Err(err) => {
+                        tracing::debug!(
+                            capture_id = %active_capture.capture_id,
+                            ?err,
+                            "failed to resolve saved path after editor save"
+                        );
+                    }
+                }
+            }
+        }
+
+        true
     }
 }
 
@@ -395,8 +437,13 @@ fn startup_capture_from_remote_command(command: RemoteCommand) -> Option<Startup
     }
 }
 
+fn should_show_launchpad_for_remote_fallback(command: RemoteCommand) -> bool {
+    !matches!(command, RemoteCommand::OpenHistory)
+}
+
 fn dispatch_remote_command(
     launchpad_actions: &LaunchpadActionExecutor,
+    open_history_window: &Rc<dyn Fn()>,
     remote_command: RemoteCommand,
     render: &Rc<dyn Fn()>,
 ) {
@@ -433,6 +480,10 @@ fn dispatch_remote_command(
         }
         RemoteCommand::OpenPreview => {
             launchpad_actions.open_preview();
+            (render.as_ref())();
+        }
+        RemoteCommand::OpenHistory => {
+            (open_history_window.as_ref())();
             (render.as_ref())();
         }
         RemoteCommand::OpenEditor => {
@@ -489,6 +540,7 @@ impl App {
         let bootstrap = bootstrap_app_runtime(startup_override);
         let mut startup_capture = bootstrap.startup_config.capture;
         let mut show_launchpad = bootstrap.startup_config.show_launchpad;
+        let mut show_history = bootstrap.startup_config.show_history;
         let daemon_mode = bootstrap.startup_config.daemon_mode;
         let startup_remote_command = bootstrap.startup_config.remote_command;
         let print_status_json = bootstrap.startup_config.print_status_json;
@@ -521,7 +573,8 @@ impl App {
                         "remote command rejected; falling back locally"
                     );
                     if startup_capture_from_remote_command(command).is_none() {
-                        show_launchpad = true;
+                        show_launchpad = should_show_launchpad_for_remote_fallback(command);
+                        show_history = matches!(command, RemoteCommand::OpenHistory);
                         Some(command)
                     } else {
                         None
@@ -533,7 +586,8 @@ impl App {
                         startup_capture = capture_mode;
                         None
                     } else {
-                        show_launchpad = true;
+                        show_launchpad = should_show_launchpad_for_remote_fallback(command);
+                        show_history = matches!(command, RemoteCommand::OpenHistory);
                         Some(command)
                     }
                 }
@@ -548,6 +602,7 @@ impl App {
         let runtime_session = Rc::new(RefCell::new(RuntimeSession::default()));
         let shared_machine = Rc::new(RefCell::new(std::mem::take(&mut self.machine)));
         let storage_service = initialize_storage_service();
+        let history_service = initialize_history_service();
         let (remote_command_tx, remote_command_rx) = mpsc::channel::<RemoteCommand>();
         let remote_command_rx = Rc::new(RefCell::new(remote_command_rx));
 
@@ -563,10 +618,13 @@ impl App {
         let runtime_window_state = Rc::new(RefCell::new(RuntimeWindowState::default()));
         let storage_service = Rc::new(storage_service);
         let storage_service_for_activate = storage_service.clone();
+        let history_service = Rc::new(history_service);
+        let history_service_for_activate = history_service.clone();
         let preview_windows = Rc::new(RefCell::new(HashMap::<String, PreviewWindowRuntime>::new()));
         let preview_action_target_capture_id = Rc::new(RefCell::new(None::<String>));
         let editor_runtime = Rc::new(EditorRuntimeState::new());
         let editor_window = Rc::new(RefCell::new(None::<ApplicationWindow>));
+        let history_window = Rc::new(RefCell::new(None::<HistoryWindowRuntime>));
         let editor_capture_id = editor_runtime.capture_id.clone();
         let editor_has_unsaved_changes = editor_runtime.has_unsaved_changes.clone();
         let editor_close_dialog_open = editor_runtime.close_dialog_open.clone();
@@ -574,8 +632,9 @@ impl App {
         let editor_toast = editor_runtime.toast.clone();
         let editor_close_guard = Rc::new(Cell::new(false));
         let editor_navigation_bindings = Rc::new(editor_navigation_bindings);
-        let headless_startup_capture =
-            !show_launchpad && !matches!(startup_capture, StartupCaptureMode::None);
+        let headless_startup_capture = !show_launchpad
+            && !show_history
+            && !matches!(startup_capture, StartupCaptureMode::None);
         let activate_once = Rc::new(Cell::new(false));
 
         application.connect_activate(move |app| {
@@ -740,12 +799,25 @@ impl App {
                 editor_toast: editor_toast.clone(),
                 close_editor_button: close_editor_button.clone(),
                 storage_service: storage_service_for_activate.clone(),
+                history_service: history_service_for_activate.clone(),
                 shared_machine: machine_for_activate.clone(),
                 ocr_engine: ocr_engine.clone(),
                 ocr_language,
                 ocr_in_progress: ocr_in_progress.clone(),
                 ocr_available,
             };
+            let history_render_context = HistoryRenderContext {
+                app: app_for_preview.clone(),
+                style_tokens,
+                status_log: status_log_for_activate.clone(),
+                runtime_session: runtime_session_for_activate.clone(),
+                shared_machine: machine_for_activate.clone(),
+                storage_service: storage_service_for_activate.clone(),
+                history_service: history_service_for_activate.clone(),
+                editor_has_unsaved_changes: editor_has_unsaved_changes.clone(),
+                history_window: history_window.clone(),
+            };
+            let render_handle = Rc::new(RefCell::new(None::<Rc<dyn Fn()>>));
 
             let render: Rc<dyn Fn()> = {
                 let runtime_session = runtime_session_for_activate.clone();
@@ -762,6 +834,8 @@ impl App {
                 let app_for_lifecycle = app_for_lifecycle.clone();
                 let headless_hold_guard = headless_hold_guard.clone();
                 let startup_capture_completed = startup_capture_completed.clone();
+                let history_render_context = history_render_context.clone();
+                let render_handle = render_handle.clone();
 
                 Rc::new(move || {
                     let runtime = runtime_session.borrow();
@@ -803,6 +877,9 @@ impl App {
                     }
 
                     launchpad.set_status_text(status_log_for_render.borrow().as_str());
+                    if let Some(render) = render_handle.borrow().as_ref() {
+                        refresh_history_window_if_open(&history_render_context, render);
+                    }
 
                     let preview_window_count = preview_windows.borrow().len();
                     let editor_window_open = editor_window.borrow().is_some();
@@ -836,12 +913,24 @@ impl App {
                     }
                 })
             };
+            render_handle.borrow_mut().replace(render.clone());
+
+            let open_history_window: Rc<dyn Fn()> = {
+                let history_render_context = history_render_context.clone();
+                let render_handle = render_handle.clone();
+                Rc::new(move || {
+                    if let Some(render) = render_handle.borrow().as_ref() {
+                        present_history_window(&history_render_context, render);
+                    }
+                })
+            };
 
             let launchpad_actions = LaunchpadActionExecutor::new(
                 runtime_session_for_activate.clone(),
                 preview_action_target_capture_id.clone(),
                 machine_for_activate.clone(),
                 storage_service_for_activate.clone(),
+                history_service_for_activate.clone(),
                 status_log_for_activate.clone(),
                 preview_windows.clone(),
                 runtime_window_state.clone(),
@@ -851,7 +940,12 @@ impl App {
                 ocr_language,
                 ocr_in_progress.clone(),
             );
-            connect_launchpad_default_buttons(&launchpad, &launchpad_actions, &render);
+            connect_launchpad_default_buttons(
+                &launchpad,
+                &launchpad_actions,
+                &open_history_window,
+                &render,
+            );
 
             {
                 let render = render.clone();
@@ -862,10 +956,16 @@ impl App {
                 jjaeng_core::service::spawn_command_server(remote_command_tx.clone());
                 let remote_command_rx = remote_command_rx.clone();
                 let launchpad_actions = launchpad_actions.clone();
+                let open_history_window = open_history_window.clone();
                 let render = render.clone();
                 gtk4::glib::timeout_add_local(Duration::from_millis(40), move || {
                     while let Ok(command) = remote_command_rx.borrow_mut().try_recv() {
-                        dispatch_remote_command(&launchpad_actions, command, &render);
+                        dispatch_remote_command(
+                            &launchpad_actions,
+                            &open_history_window,
+                            command,
+                            &render,
+                        );
                     }
                     gtk4::glib::ControlFlow::Continue
                 });
@@ -881,7 +981,7 @@ impl App {
             });
 
             if let Some(command) = local_startup_remote_command {
-                dispatch_remote_command(&launchpad_actions, command, &render);
+                dispatch_remote_command(&launchpad_actions, &open_history_window, command, &render);
             }
 
             tracing::info!("presenting startup launcher window");
