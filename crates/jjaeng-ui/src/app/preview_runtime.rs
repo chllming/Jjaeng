@@ -276,12 +276,16 @@ struct PreviewWindowBuild {
     controls_revealer: Revealer,
     preview_surface: Frame,
     toast_label: gtk4::Label,
+    quick_copy_button: Button,
+    quick_save_button: Button,
     copy_button: Button,
     save_button: Button,
 }
 
 struct PreviewControlsBuild {
     controls_revealer: Revealer,
+    quick_copy_button: Button,
+    quick_save_button: Button,
     copy_button: Button,
     save_button: Button,
 }
@@ -294,6 +298,24 @@ fn build_preview_controls(context: &PreviewRenderContext) -> PreviewControlsBuil
     controls_layout.set_margin_bottom(context.style_tokens.spacing_16);
     controls_layout.set_margin_start(context.style_tokens.spacing_16);
     controls_layout.set_margin_end(context.style_tokens.spacing_16);
+
+    let top_controls_wrap = GtkBox::new(Orientation::Horizontal, context.style_tokens.spacing_4);
+    top_controls_wrap.set_halign(Align::End);
+    top_controls_wrap.set_valign(Align::Start);
+    top_controls_wrap.add_css_class("preview-top-controls");
+    top_controls_wrap.add_css_class("preview-action-group");
+
+    let quick_save_button = Button::with_label("Save");
+    quick_save_button.add_css_class("preview-quick-action");
+    quick_save_button.add_css_class("suggested-action");
+    quick_save_button.set_tooltip_text(Some("Save to the screenshot folder and close"));
+
+    let quick_copy_button = Button::with_label("Copy");
+    quick_copy_button.add_css_class("preview-quick-action");
+    quick_copy_button.set_tooltip_text(Some("Copy to the clipboard and close"));
+
+    top_controls_wrap.append(&quick_save_button);
+    top_controls_wrap.append(&quick_copy_button);
 
     let controls_spacer = GtkBox::new(Orientation::Vertical, 0);
     controls_spacer.set_vexpand(true);
@@ -312,6 +334,7 @@ fn build_preview_controls(context: &PreviewRenderContext) -> PreviewControlsBuil
     bottom_controls_wrap.append(&preview_save_button);
     bottom_controls_wrap.append(&preview_copy_button);
 
+    controls_layout.append(&top_controls_wrap);
     controls_layout.append(&controls_spacer);
     controls_layout.append(&bottom_controls_wrap);
 
@@ -326,6 +349,8 @@ fn build_preview_controls(context: &PreviewRenderContext) -> PreviewControlsBuil
 
     PreviewControlsBuild {
         controls_revealer,
+        quick_copy_button,
+        quick_save_button,
         copy_button: preview_copy_button,
         save_button: preview_save_button,
     }
@@ -403,6 +428,8 @@ fn build_preview_window(
         controls_revealer: preview_controls.controls_revealer,
         preview_surface,
         toast_label: preview_toast_label,
+        quick_copy_button: preview_controls.quick_copy_button,
+        quick_save_button: preview_controls.quick_save_button,
         copy_button: preview_controls.copy_button,
         save_button: preview_controls.save_button,
     }
@@ -415,6 +442,8 @@ fn connect_preview_window_action_wiring(
 ) -> Rc<Cell<bool>> {
     connect_preview_action_bridges(
         &[
+            (&build.quick_save_button, &context.save_button),
+            (&build.quick_copy_button, &context.copy_button),
             (&build.save_button, &context.save_button),
             (&build.copy_button, &context.copy_button),
         ],

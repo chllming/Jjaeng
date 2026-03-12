@@ -277,6 +277,17 @@ button.stroke-chip-active {{
 }}
 .preview-top-controls {{
   padding: 0;
+  border-radius: 999px;
+}}
+button.preview-quick-action {{
+  min-height: 28px;
+  min-width: 56px;
+  padding: 0 {spacing_8}px;
+  border-radius: 999px;
+  font-size: 11px;
+}}
+button.preview-quick-action.suggested-action {{
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
 }}
 
 /* ── Icon buttons (shared base) ── */
