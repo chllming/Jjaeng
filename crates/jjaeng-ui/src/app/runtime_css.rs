@@ -1,7 +1,28 @@
 use crate::ui::{ColorTokens, StyleTokens};
 use gtk4::CssProvider;
+use jjaeng_core::theme::load_omarchy_menu_style;
+
+fn css_font_family(font_family: &str) -> String {
+    let trimmed = font_family.trim();
+    if trimmed.is_empty() {
+        return "monospace".into();
+    }
+    if trimmed.contains(',') || trimmed.starts_with('"') || trimmed.starts_with('\'') {
+        return trimmed.to_string();
+    }
+    if trimmed.chars().any(char::is_whitespace) {
+        return format!("\"{}\"", trimmed.replace('"', "\\\""));
+    }
+    trimmed.to_string()
+}
+
+fn scaled_font_size(base: u16, delta: i16, minimum: u16) -> u16 {
+    let adjusted = i32::from(base).saturating_add(i32::from(delta));
+    adjusted.max(i32::from(minimum)) as u16
+}
 
 pub(super) fn install_runtime_css(tokens: StyleTokens, colors: &ColorTokens, motion_enabled: bool) {
+    let omarchy_menu_style = load_omarchy_menu_style();
     let close_icon_size = tokens.icon_size.saturating_add(2);
     let pin_icon_size = tokens.icon_size.saturating_add(1);
     let motion_standard_ms = if motion_enabled {
@@ -14,6 +35,16 @@ pub(super) fn install_runtime_css(tokens: StyleTokens, colors: &ColorTokens, mot
     } else {
         0
     };
+    let history_font_family = css_font_family(&omarchy_menu_style.font_family);
+    let history_base_font_size = omarchy_menu_style.base_font_size_px.max(14);
+    let history_meta_font_size = scaled_font_size(history_base_font_size, -6, 11);
+    let history_button_font_size = scaled_font_size(history_base_font_size, -7, 11);
+    let history_border_width = omarchy_menu_style.surface_border_width_px.max(1);
+    let history_inner_border_width = history_border_width.saturating_sub(1).max(1);
+    let history_surface_alpha = omarchy_menu_style.surface_background_alpha.clamp(0.0, 1.0);
+    let history_tile_alpha = (history_surface_alpha + 0.03).min(0.98);
+    let history_overlay_top_alpha = (history_surface_alpha * 0.82).clamp(0.44, 0.90);
+    let history_overlay_mid_alpha = (history_surface_alpha * 0.58).clamp(0.28, 0.72);
     let css = format!(
         "
 window.jjaeng-root {{
@@ -432,22 +463,22 @@ window.history-window {{
 }}
 .history-root {{
   border-radius: 0;
-  border: 2px solid alpha({text_color}, 0.82);
-  background: alpha({canvas_background}, 0.95);
+  border: {history_border_width}px solid alpha({text_color}, 0.82);
+  background: alpha({canvas_background}, {history_surface_alpha:.2});
   box-shadow: none;
 }}
 .history-root,
 .history-root label,
 .history-root button {{
-  font-family: monospace;
+  font-family: {history_font_family};
   color: {text_color};
 }}
 frame.history-header-card,
 frame.history-tile,
 frame.history-thumbnail-frame {{
   border-radius: 0;
-  border: 1px solid alpha({text_color}, 0.14);
-  background: alpha({canvas_background}, 0.95);
+  border: {history_inner_border_width}px solid alpha({text_color}, 0.14);
+  background: alpha({canvas_background}, {history_surface_alpha:.2});
 }}
 frame.history-header-card > border,
 frame.history-tile > border,
@@ -459,12 +490,12 @@ frame.history-header-card {{
   border: none;
 }}
 label.history-kicker {{
-  font-size: 12px;
+  font-size: {history_meta_font_size}px;
   font-weight: 700;
   opacity: 0.70;
 }}
 label.history-title {{
-  font-size: 18px;
+  font-size: {history_base_font_size}px;
   font-weight: 700;
 }}
 label.history-subtitle,
@@ -474,59 +505,59 @@ label.history-empty-state {{
   opacity: 0.76;
 }}
 label.history-count {{
-  font-size: 12px;
+  font-size: {history_meta_font_size}px;
   font-weight: 600;
   opacity: 1.0;
   padding: 4px 10px;
   border-radius: 0;
-  border: 1px solid alpha({text_color}, 0.18);
-  background: alpha({canvas_background}, 0.95);
+  border: {history_inner_border_width}px solid alpha({text_color}, 0.18);
+  background: alpha({canvas_background}, {history_surface_alpha:.2});
 }}
 frame.history-tile {{
   min-width: 264px;
 }}
 frame.history-thumbnail-frame {{
-  background: alpha({canvas_background}, 0.98);
+  background: alpha({canvas_background}, {history_tile_alpha:.2});
 }}
 label.history-tile-title {{
-  font-size: 12px;
+  font-size: {history_meta_font_size}px;
   font-weight: 650;
 }}
 label.history-tile-meta,
 label.history-shortcut-tip {{
-  font-size: 12px;
+  font-size: {history_meta_font_size}px;
 }}
 label.history-status-chip {{
   padding: 3px 8px;
   border-radius: 0;
-  border: 1px solid alpha({text_color}, 0.16);
-  font-size: 11px;
+  border: {history_inner_border_width}px solid alpha({text_color}, 0.16);
+  font-size: {history_button_font_size}px;
   font-weight: 600;
 }}
 label.history-status-saved {{
-  background: alpha({canvas_background}, 0.95);
+  background: alpha({canvas_background}, {history_surface_alpha:.2});
 }}
 label.history-status-unsaved {{
   opacity: 0.72;
-  background: alpha({canvas_background}, 0.95);
+  background: alpha({canvas_background}, {history_surface_alpha:.2});
 }}
 box.history-info-row {{
   min-height: 24px;
 }}
 revealer.history-action-revealer {{
   background: linear-gradient(to top,
-                              rgba(0, 0, 0, 0.74),
-                              rgba(0, 0, 0, 0.52),
+                              rgba(0, 0, 0, {history_overlay_top_alpha:.2}),
+                              rgba(0, 0, 0, {history_overlay_mid_alpha:.2}),
                               rgba(0, 0, 0, 0.0));
 }}
 box.history-action-row button.history-action-button {{
   min-width: 64px;
   min-height: 30px;
   padding: 4px 10px;
-  font-size: 11px;
+  font-size: {history_button_font_size}px;
   border-radius: 0;
-  border: 1px solid alpha({text_color}, 0.16);
-  background: alpha({canvas_background}, 0.98);
+  border: {history_inner_border_width}px solid alpha({text_color}, 0.16);
+  background: alpha({canvas_background}, {history_tile_alpha:.2});
 }}
 
 /* ── Toast badge ── */
@@ -561,6 +592,16 @@ box.history-action-row button.history-action-button {{
         text_color = colors.text_color,
         focus_ring_color = colors.focus_ring_color,
         focus_ring_glow = colors.focus_ring_glow,
+        history_font_family = history_font_family,
+        history_base_font_size = history_base_font_size,
+        history_meta_font_size = history_meta_font_size,
+        history_button_font_size = history_button_font_size,
+        history_border_width = history_border_width,
+        history_inner_border_width = history_inner_border_width,
+        history_surface_alpha = history_surface_alpha,
+        history_tile_alpha = history_tile_alpha,
+        history_overlay_top_alpha = history_overlay_top_alpha,
+        history_overlay_mid_alpha = history_overlay_mid_alpha,
         spacing_8 = tokens.spacing_8,
         spacing_4 = tokens.spacing_4,
         spacing_12 = tokens.spacing_12,

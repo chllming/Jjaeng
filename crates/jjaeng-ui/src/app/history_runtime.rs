@@ -54,18 +54,17 @@ pub(super) fn present_history_window(context: &HistoryRenderContext, render: &Rc
     };
 
     close_duplicate_history_windows(&context.app, Some(&runtime.window));
-    if let Some((x, y, width, height)) = history_window_geometry(context.style_tokens) {
-        runtime.window.set_default_size(width, height);
-        runtime.window.set_size_request(width, height);
-        request_window_floating_with_geometry(
-            "history",
-            HISTORY_WINDOW_TITLE,
-            true,
-            Some((x, y, width, height)),
-            true,
-            true,
-        );
-    }
+    let (width, height) = history_window_size(context.style_tokens);
+    runtime.window.set_default_size(width, height);
+    runtime.window.set_size_request(width, height);
+    request_window_floating_with_geometry(
+        "history",
+        HISTORY_WINDOW_TITLE,
+        true,
+        Some((0, 0, width, height)),
+        true,
+        true,
+    );
     runtime.window.present();
     refresh_history_window_if_open(context, render);
 }
@@ -245,13 +244,12 @@ fn build_history_window(context: &HistoryRenderContext) -> HistoryWindowRuntime 
         window.add_controller(key_controller);
     }
 
-    let runtime = HistoryWindowRuntime {
+    HistoryWindowRuntime {
         window,
         count_label,
         empty_state_label,
         flow_box,
-    };
-    runtime
+    }
 }
 
 fn close_history_window_if_open(context: &HistoryRenderContext) -> bool {
@@ -286,12 +284,13 @@ fn close_duplicate_history_windows(app: &Application, keep: Option<&ApplicationW
     }
 }
 
-fn history_window_geometry(style_tokens: StyleTokens) -> Option<(i32, i32, i32, i32)> {
-    let monitor_geometry = focused_monitor_geometry().or_else(primary_monitor_geometry)?;
-    Some(history_window_geometry_for_monitor(
-        monitor_geometry,
-        style_tokens,
-    ))
+fn history_window_size(style_tokens: StyleTokens) -> (i32, i32) {
+    focused_monitor_geometry()
+        .or_else(primary_monitor_geometry)
+        .map(|(_, _, monitor_width, monitor_height)| {
+            history_window_size_for_monitor((monitor_width, monitor_height), style_tokens)
+        })
+        .unwrap_or((HISTORY_WINDOW_WIDTH, HISTORY_WINDOW_HEIGHT))
 }
 
 fn clamp_history_window_dimension(
@@ -310,16 +309,14 @@ fn clamp_history_window_dimension(
     }
 }
 
-fn history_window_geometry_for_monitor(
-    (monitor_x, monitor_y, monitor_width, monitor_height): (i32, i32, i32, i32),
+fn history_window_size_for_monitor(
+    (monitor_width, monitor_height): (i32, i32),
     style_tokens: StyleTokens,
-) -> (i32, i32, i32, i32) {
+) -> (i32, i32) {
     let margin = style_tokens.spacing_16.max(12);
     let width = clamp_history_window_dimension(HISTORY_WINDOW_WIDTH, monitor_width, margin, 520);
     let height = clamp_history_window_dimension(HISTORY_WINDOW_HEIGHT, monitor_height, margin, 420);
-    let x = monitor_x.saturating_add((monitor_width.saturating_sub(width)).max(0) / 2);
-    let y = monitor_y.saturating_add((monitor_height.saturating_sub(height)).max(0) / 2);
-    (x, y, width, height)
+    (width, height)
 }
 
 fn primary_monitor_geometry() -> Option<(i32, i32, i32, i32)> {
@@ -342,18 +339,18 @@ mod tests {
     use crate::ui::LAYOUT_TOKENS;
 
     #[test]
-    fn history_window_geometry_for_monitor_centers_on_focused_monitor() {
+    fn history_window_size_for_monitor_keeps_default_size_on_large_monitors() {
         assert_eq!(
-            history_window_geometry_for_monitor((0, 0, 1920, 1080), LAYOUT_TOKENS),
-            (522, 240, HISTORY_WINDOW_WIDTH, HISTORY_WINDOW_HEIGHT)
+            history_window_size_for_monitor((1920, 1080), LAYOUT_TOKENS),
+            (HISTORY_WINDOW_WIDTH, HISTORY_WINDOW_HEIGHT)
         );
     }
 
     #[test]
-    fn history_window_geometry_for_monitor_clamps_to_small_monitors() {
+    fn history_window_size_for_monitor_clamps_to_small_monitors() {
         assert_eq!(
-            history_window_geometry_for_monitor((0, 0, 400, 300), LAYOUT_TOKENS),
-            (16, 16, 368, 268)
+            history_window_size_for_monitor((400, 300), LAYOUT_TOKENS),
+            (368, 268)
         );
     }
 }

@@ -12,6 +12,8 @@ use crate::style::{StyleTokens, LAYOUT_TOKENS};
 
 const THEME_CONFIG_FILE: &str = "theme.json";
 const OMARCHY_THEME_COLORS_FILE: &str = "current/theme/colors.toml";
+const OMARCHY_WALKER_STYLE_FILE: &str =
+    ".local/share/omarchy/default/walker/themes/omarchy-default/style.css";
 
 pub type ThemeResult<T> = std::result::Result<T, ThemeError>;
 
@@ -26,6 +28,25 @@ pub struct ColorTokens {
     pub text_color: String,
     pub accent_gradient: String,
     pub accent_text_color: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct OmarchyMenuStyle {
+    pub font_family: String,
+    pub base_font_size_px: u16,
+    pub surface_border_width_px: u16,
+    pub surface_background_alpha: f32,
+}
+
+impl Default for OmarchyMenuStyle {
+    fn default() -> Self {
+        Self {
+            font_family: "monospace".into(),
+            base_font_size_px: 18,
+            surface_border_width_px: 2,
+            surface_background_alpha: 0.95,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -214,6 +235,11 @@ pub fn load_omarchy_color_tokens() -> Option<ColorTokens> {
     load_omarchy_color_tokens_with(xdg_config_home.as_deref(), home.as_deref())
 }
 
+pub fn load_omarchy_menu_style() -> OmarchyMenuStyle {
+    let (_, home) = config_env_dirs();
+    load_omarchy_menu_style_with(home.as_deref())
+}
+
 pub fn tokens_for(mode: ThemeMode, overrides: Option<&ThemeColors>) -> (StyleTokens, ColorTokens) {
     (LAYOUT_TOKENS, resolve_color_tokens(mode, overrides))
 }
@@ -266,6 +292,29 @@ fn load_omarchy_color_tokens_with(
     omarchy_color_tokens_from_theme(&colors)
 }
 
+fn load_omarchy_menu_style_with(home: Option<&Path>) -> OmarchyMenuStyle {
+    let path = match omarchy_walker_style_path_with(home) {
+        Ok(path) => path,
+        Err(err) => {
+            tracing::debug!(?err, "failed to resolve omarchy walker style path");
+            return OmarchyMenuStyle::default();
+        }
+    };
+    if !path.exists() {
+        return OmarchyMenuStyle::default();
+    }
+
+    let serialized = match fs::read_to_string(&path) {
+        Ok(serialized) => serialized,
+        Err(err) => {
+            tracing::debug!(?err, ?path, "failed to read omarchy walker style");
+            return OmarchyMenuStyle::default();
+        }
+    };
+
+    parse_omarchy_walker_style(&serialized)
+}
+
 fn omarchy_theme_colors_path_with(
     xdg_config_home: Option<&Path>,
     home: Option<&Path>,
@@ -275,6 +324,11 @@ fn omarchy_theme_colors_path_with(
             ConfigPathError::MissingHomeDirectory => ThemeError::MissingHomeDirectory,
         }
     })
+}
+
+fn omarchy_walker_style_path_with(home: Option<&Path>) -> ThemeResult<PathBuf> {
+    let home = home.ok_or(ThemeError::MissingHomeDirectory)?;
+    Ok(home.join(OMARCHY_WALKER_STYLE_FILE))
 }
 
 fn parse_omarchy_theme_colors(serialized: &str) -> Option<OmarchyThemeColors> {
@@ -305,6 +359,81 @@ fn parse_omarchy_theme_colors(serialized: &str) -> Option<OmarchyThemeColors> {
     }
 
     Some(colors)
+}
+
+fn parse_omarchy_walker_style(serialized: &str) -> OmarchyMenuStyle {
+    let mut style = OmarchyMenuStyle::default();
+    let mut current_selector: Option<&str> = None;
+
+    for line in serialized.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('@') || line.starts_with("/*") {
+            continue;
+        }
+        if line.ends_with('{') {
+            current_selector = Some(line.trim_end_matches('{').trim());
+            continue;
+        }
+        if line == "}" {
+            current_selector = None;
+            continue;
+        }
+
+        let Some(selector) = current_selector else {
+            continue;
+        };
+        let Some((property, raw_value)) = line.trim_end_matches(';').split_once(':') else {
+            continue;
+        };
+        let property = property.trim();
+        let value = raw_value.trim();
+
+        match (selector, property) {
+            ("*", "font-family") => {
+                if !value.is_empty() {
+                    style.font_family = value.to_string();
+                }
+            }
+            ("*", "font-size") => {
+                if let Some(size) = parse_css_px(value) {
+                    style.base_font_size_px = size.max(1);
+                }
+            }
+            (".box-wrapper", "background") => {
+                if let Some(alpha) = parse_css_alpha(value) {
+                    style.surface_background_alpha = alpha.clamp(0.0, 1.0);
+                }
+            }
+            (".box-wrapper", "border") => {
+                if let Some(width) = parse_css_border_width(value) {
+                    style.surface_border_width_px = width.max(1);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    style
+}
+
+fn parse_css_px(value: &str) -> Option<u16> {
+    value
+        .split_whitespace()
+        .next()?
+        .strip_suffix("px")?
+        .trim()
+        .parse()
+        .ok()
+}
+
+fn parse_css_border_width(value: &str) -> Option<u16> {
+    parse_css_px(value)
+}
+
+fn parse_css_alpha(value: &str) -> Option<f32> {
+    let inner = value.trim().strip_prefix("alpha(")?.strip_suffix(')')?;
+    let (_, alpha) = inner.rsplit_once(',')?;
+    alpha.trim().parse().ok()
 }
 
 fn omarchy_color_tokens_from_theme(colors: &OmarchyThemeColors) -> Option<ColorTokens> {
@@ -1075,6 +1204,65 @@ color12 = "#7da6ff"
                 resolved.accent_gradient,
                 "linear-gradient(135deg, #7aa2f7 0%, #7da6ff 100%)"
             );
+        });
+    }
+
+    #[test]
+    fn parse_omarchy_walker_style_reads_menu_surface_tokens() {
+        let style = parse_omarchy_walker_style(
+            r#"
+* {
+  all: unset;
+}
+
+* {
+  font-family: "Departure Mono";
+  font-size: 17px;
+  color: @text;
+}
+
+.box-wrapper {
+  background: alpha(@base, 0.91);
+  padding: 20px;
+  border: 3px solid @border;
+}
+"#,
+        );
+
+        assert_eq!(style.font_family, "\"Departure Mono\"");
+        assert_eq!(style.base_font_size_px, 17);
+        assert_eq!(style.surface_border_width_px, 3);
+        assert!((style.surface_background_alpha - 0.91).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn load_omarchy_menu_style_with_reads_walker_defaults() {
+        with_temp_root(|root| {
+            let path = omarchy_walker_style_path_with(Some(root)).unwrap();
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).unwrap();
+            }
+            fs::write(
+                &path,
+                r#"
+* {
+  font-family: monospace;
+  font-size: 19px;
+}
+
+.box-wrapper {
+  background: alpha(@base, 0.93);
+  border: 4px solid @border;
+}
+"#,
+            )
+            .unwrap();
+
+            let style = load_omarchy_menu_style_with(Some(root));
+            assert_eq!(style.font_family, "monospace");
+            assert_eq!(style.base_font_size_px, 19);
+            assert_eq!(style.surface_border_width_px, 4);
+            assert!((style.surface_background_alpha - 0.93).abs() < f32::EPSILON);
         });
     }
 
