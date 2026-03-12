@@ -19,33 +19,41 @@ fi
 state="$(jq -r '.state // "idle"' <<<"${status_json}")"
 latest_label="$(jq -r '.latest_label // "No capture yet"' <<<"${status_json}")"
 capture_count="$(jq -r '.capture_count // 0' <<<"${status_json}")"
+preview_count="$(jq -r '.preview_count // 0' <<<"${status_json}")"
+editor_open="$(jq -r '.editor_open // false' <<<"${status_json}")"
 
-text="shot"
+text=""
 class="idle"
-tooltip="Jjaeng: ${latest_label}"
+tooltip="Jjaeng\nLatest: ${latest_label}\nSession captures: ${capture_count}\nClick: open history"
 
 case "${state}" in
   preview)
     class="preview"
-    text="copy/save"
+    tooltip="Jjaeng\nPreview active (${preview_count})\nLatest: ${latest_label}\nClick: open history"
     ;;
   editor)
     class="editor"
-    text="edit"
+    tooltip="Jjaeng\nEditor active\nLatest: ${latest_label}\nClick: open history"
     ;;
   idle)
     if [[ "${capture_count}" -gt 0 ]]; then
       class="ready"
-      text="ready"
+      tooltip="Jjaeng\nRecent capture ready\nLatest: ${latest_label}\nClick: open history"
     fi
     ;;
   *)
     class="error"
-    text="error"
+    text=""
+    tooltip="Jjaeng\nStatus unavailable\nClick: open history"
     ;;
 esac
 
-printf '{"text":%s,"class":%s,"tooltip":%s}\n' \
+if [[ "${editor_open}" == "true" && "${class}" != "error" ]]; then
+  class="editor"
+fi
+
+printf '{"text":%s,"alt":%s,"class":%s,"tooltip":%s}\n' \
   "$(jq -Rn --arg value "${text}" '$value')" \
+  "$(jq -Rn --arg value "jjaeng" '$value')" \
   "$(jq -Rn --arg value "${class}" '$value')" \
   "$(jq -Rn --arg value "${tooltip}" '$value')"

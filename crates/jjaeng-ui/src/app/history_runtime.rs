@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::process::Command;
 use std::rc::Rc;
 
 use gtk4::prelude::*;
@@ -12,10 +13,13 @@ use jjaeng_core::notification;
 use jjaeng_core::state::{AppEvent, AppState, StateMachine};
 use jjaeng_core::storage::StorageService;
 
+use super::hypr::request_window_floating_with_geometry;
 use super::runtime_support::RuntimeSession;
 use crate::ui::StyleTokens;
 
 const HISTORY_WINDOW_TITLE: &str = "Jjaeng History";
+const HISTORY_WINDOW_WIDTH: i32 = 860;
+const HISTORY_WINDOW_HEIGHT: i32 = 620;
 
 #[derive(Clone)]
 pub(super) struct HistoryRenderContext {
@@ -39,7 +43,8 @@ pub(super) struct HistoryWindowRuntime {
 }
 
 pub(super) fn present_history_window(context: &HistoryRenderContext, render: &Rc<dyn Fn()>) {
-    let runtime = if let Some(runtime) = context.history_window.borrow().as_ref().cloned() {
+    let existing_runtime = { context.history_window.borrow().as_ref().cloned() };
+    let runtime = if let Some(runtime) = existing_runtime {
         runtime
     } else {
         close_duplicate_history_windows(&context.app, None);
@@ -49,6 +54,16 @@ pub(super) fn present_history_window(context: &HistoryRenderContext, render: &Rc
     };
 
     close_duplicate_history_windows(&context.app, Some(&runtime.window));
+    if let Some((x, y, width, height)) = history_window_geometry(context.style_tokens) {
+        runtime.window.set_default_size(width, height);
+        runtime.window.set_size_request(width, height);
+        request_window_floating_with_geometry(
+            "history",
+            HISTORY_WINDOW_TITLE,
+            true,
+            Some((x, y, width, height)),
+        );
+    }
     runtime.window.present();
     refresh_history_window_if_open(context, render);
 }
@@ -108,7 +123,10 @@ fn build_history_window(context: &HistoryRenderContext) -> HistoryWindowRuntime 
     window.set_title(Some(HISTORY_WINDOW_TITLE));
     window.add_css_class(jjaeng_core::identity::APP_CSS_ROOT);
     window.add_css_class("history-window");
-    window.set_default_size(1120, 760);
+    window.set_default_size(HISTORY_WINDOW_WIDTH, HISTORY_WINDOW_HEIGHT);
+    window.set_size_request(HISTORY_WINDOW_WIDTH, HISTORY_WINDOW_HEIGHT);
+    window.set_resizable(false);
+    window.set_decorated(false);
 
     let root = GtkBox::new(Orientation::Vertical, context.style_tokens.spacing_12);
     root.set_margin_top(context.style_tokens.spacing_16);
@@ -149,7 +167,7 @@ fn build_history_window(context: &HistoryRenderContext) -> HistoryWindowRuntime 
     flow_box.set_selection_mode(SelectionMode::None);
     flow_box.set_column_spacing(context.style_tokens.spacing_12 as u32);
     flow_box.set_row_spacing(context.style_tokens.spacing_12 as u32);
-    flow_box.set_max_children_per_line(4);
+    flow_box.set_max_children_per_line(3);
     flow_box.set_activate_on_single_click(false);
     flow_box.add_css_class("history-grid");
 
@@ -203,6 +221,66 @@ fn close_duplicate_history_windows(app: &Application, keep: Option<&ApplicationW
         }
         window.close();
     }
+}
+
+fn history_window_geometry(style_tokens: StyleTokens) -> Option<(i32, i32, i32, i32)> {
+    let (monitor_x, monitor_y, monitor_width, monitor_height) =
+        focused_monitor_geometry().or_else(primary_monitor_geometry)?;
+    let margin = style_tokens.spacing_16.max(12);
+    let width = HISTORY_WINDOW_WIDTH
+        .min(monitor_width.saturating_sub(margin.saturating_mul(2)))
+        .max(520);
+    let height = HISTORY_WINDOW_HEIGHT
+        .min(monitor_height.saturating_sub(margin.saturating_mul(2)))
+        .max(420);
+    let x = monitor_x
+        .saturating_add(monitor_width)
+        .saturating_sub(width)
+        .saturating_sub(margin);
+    let y = monitor_y.saturating_add(margin);
+    Some((x, y, width, height))
+}
+
+fn focused_monitor_geometry() -> Option<(i32, i32, i32, i32)> {
+    let outcome = Command::new("hyprctl")
+        .args(["monitors", "-j"])
+        .output()
+        .ok()?;
+    if !outcome.status.success() {
+        return None;
+    }
+
+    let payload: serde_json::Value = serde_json::from_slice(&outcome.stdout).ok()?;
+    let monitors = payload.as_array()?;
+    let monitor = monitors.iter().find(|monitor| {
+        monitor
+            .get("focused")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    })?;
+
+    let x = i32::try_from(monitor.get("x")?.as_i64()?).ok()?;
+    let y = i32::try_from(monitor.get("y")?.as_i64()?).ok()?;
+    let width = i32::try_from(monitor.get("width")?.as_i64()?).ok()?;
+    let height = i32::try_from(monitor.get("height")?.as_i64()?).ok()?;
+    if width <= 0 || height <= 0 {
+        return None;
+    }
+    Some((x, y, width, height))
+}
+
+fn primary_monitor_geometry() -> Option<(i32, i32, i32, i32)> {
+    let display = gtk4::gdk::Display::default()?;
+    let monitors = display.monitors();
+    let item = monitors.item(0)?;
+    let monitor = item.downcast::<gtk4::gdk::Monitor>().ok()?;
+    let geometry = monitor.geometry();
+    Some((
+        geometry.x(),
+        geometry.y(),
+        geometry.width().max(1),
+        geometry.height().max(1),
+    ))
 }
 
 fn build_history_tile(
