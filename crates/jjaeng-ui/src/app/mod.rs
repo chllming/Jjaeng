@@ -438,12 +438,16 @@ fn startup_capture_from_remote_command(command: RemoteCommand) -> Option<Startup
 }
 
 fn should_show_launchpad_for_remote_fallback(command: RemoteCommand) -> bool {
-    !matches!(command, RemoteCommand::OpenHistory)
+    !matches!(
+        command,
+        RemoteCommand::OpenHistory | RemoteCommand::ToggleHistory
+    )
 }
 
 fn dispatch_remote_command(
     launchpad_actions: &LaunchpadActionExecutor,
     open_history_window: &Rc<dyn Fn()>,
+    toggle_history_window: &Rc<dyn Fn()>,
     remote_command: RemoteCommand,
     render: &Rc<dyn Fn()>,
 ) {
@@ -484,6 +488,10 @@ fn dispatch_remote_command(
         }
         RemoteCommand::OpenHistory => {
             (open_history_window.as_ref())();
+            (render.as_ref())();
+        }
+        RemoteCommand::ToggleHistory => {
+            (toggle_history_window.as_ref())();
             (render.as_ref())();
         }
         RemoteCommand::OpenEditor => {
@@ -925,6 +933,16 @@ impl App {
                 })
             };
 
+            let toggle_history_window: Rc<dyn Fn()> = {
+                let history_render_context = history_render_context.clone();
+                let render_handle = render_handle.clone();
+                Rc::new(move || {
+                    if let Some(render) = render_handle.borrow().as_ref() {
+                        toggle_history_window(&history_render_context, render);
+                    }
+                })
+            };
+
             let launchpad_actions = LaunchpadActionExecutor::new(
                 runtime_session_for_activate.clone(),
                 preview_action_target_capture_id.clone(),
@@ -957,12 +975,14 @@ impl App {
                 let remote_command_rx = remote_command_rx.clone();
                 let launchpad_actions = launchpad_actions.clone();
                 let open_history_window = open_history_window.clone();
+                let toggle_history_window = toggle_history_window.clone();
                 let render = render.clone();
                 gtk4::glib::timeout_add_local(Duration::from_millis(40), move || {
                     while let Ok(command) = remote_command_rx.borrow_mut().try_recv() {
                         dispatch_remote_command(
                             &launchpad_actions,
                             &open_history_window,
+                            &toggle_history_window,
                             command,
                             &render,
                         );
@@ -981,7 +1001,13 @@ impl App {
             });
 
             if let Some(command) = local_startup_remote_command {
-                dispatch_remote_command(&launchpad_actions, &open_history_window, command, &render);
+                dispatch_remote_command(
+                    &launchpad_actions,
+                    &open_history_window,
+                    &toggle_history_window,
+                    command,
+                    &render,
+                );
             }
 
             tracing::info!("presenting startup launcher window");

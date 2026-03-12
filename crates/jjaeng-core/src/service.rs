@@ -15,6 +15,7 @@ pub enum RemoteCommand {
     CaptureRegion,
     CaptureWindow,
     OpenHistory,
+    ToggleHistory,
     OpenPreview,
     OpenEditor,
     SaveLatest,

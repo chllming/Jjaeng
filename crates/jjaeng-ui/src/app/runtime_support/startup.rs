@@ -59,6 +59,9 @@ impl StartupConfig {
                     config.show_history = true;
                     config.remote_command = Some(RemoteCommand::OpenHistory);
                 }
+                "--toggle-history" => {
+                    config.remote_command = Some(RemoteCommand::ToggleHistory);
+                }
                 "--daemon" => {
                     config.daemon_mode = true;
                 }
@@ -115,6 +118,13 @@ mod tests {
         let config = StartupConfig::from_iter(["--history"]);
         assert!(config.show_history);
         assert_eq!(config.remote_command, Some(RemoteCommand::OpenHistory));
+    }
+
+    #[test]
+    fn startup_config_parses_toggle_history_flag() {
+        let config = StartupConfig::from_iter(["--toggle-history"]);
+        assert!(!config.show_history);
+        assert_eq!(config.remote_command, Some(RemoteCommand::ToggleHistory));
     }
 
     #[test]

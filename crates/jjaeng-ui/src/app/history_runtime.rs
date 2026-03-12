@@ -68,6 +68,14 @@ pub(super) fn present_history_window(context: &HistoryRenderContext, render: &Rc
     refresh_history_window_if_open(context, render);
 }
 
+pub(super) fn toggle_history_window(context: &HistoryRenderContext, render: &Rc<dyn Fn()>) {
+    if close_history_window_if_open(context) {
+        return;
+    }
+
+    present_history_window(context, render);
+}
+
 pub(super) fn refresh_history_window_if_open(
     context: &HistoryRenderContext,
     render: &Rc<dyn Fn()>,
@@ -203,6 +211,20 @@ fn build_history_window(context: &HistoryRenderContext) -> HistoryWindowRuntime 
         flow_box,
     };
     runtime
+}
+
+fn close_history_window_if_open(context: &HistoryRenderContext) -> bool {
+    let runtime = {
+        let borrowed = context.history_window.borrow();
+        borrowed.as_ref().cloned()
+    };
+    let Some(runtime) = runtime else {
+        return false;
+    };
+
+    runtime.window.close();
+    context.history_window.borrow_mut().take();
+    true
 }
 
 fn close_duplicate_history_windows(app: &Application, keep: Option<&ApplicationWindow>) {
