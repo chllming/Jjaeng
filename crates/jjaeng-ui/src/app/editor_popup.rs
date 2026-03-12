@@ -21,6 +21,54 @@ pub(super) use interaction::*;
 pub(super) use output::*;
 pub(super) use render::*;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(super) enum EditorOutputFormat {
+    #[default]
+    Png,
+    Jpeg,
+    Webp,
+}
+
+impl EditorOutputFormat {
+    pub(super) const ALL: [Self; 3] = [Self::Png, Self::Jpeg, Self::Webp];
+
+    pub(super) const fn label(self) -> &'static str {
+        match self {
+            Self::Png => "PNG",
+            Self::Jpeg => "JPEG",
+            Self::Webp => "WEBP",
+        }
+    }
+
+    pub(super) const fn file_extension(self) -> &'static str {
+        match self {
+            Self::Png => "png",
+            Self::Jpeg => "jpg",
+            Self::Webp => "webp",
+        }
+    }
+
+    pub(super) const fn image_format(self) -> image::ImageFormat {
+        match self {
+            Self::Png => image::ImageFormat::Png,
+            Self::Jpeg => image::ImageFormat::Jpeg,
+            Self::Webp => image::ImageFormat::WebP,
+        }
+    }
+
+    pub(super) fn from_dropdown_index(index: u32) -> Self {
+        Self::ALL.get(index as usize).copied().unwrap_or_default()
+    }
+
+    pub(super) fn dropdown_index(self) -> u32 {
+        match self {
+            Self::Png => 0,
+            Self::Jpeg => 1,
+            Self::Webp => 2,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct ToolDragPreview {
     pub(super) tool: ToolKind,
@@ -218,6 +266,7 @@ pub(super) struct ToolRenderContext<'a> {
 pub(super) struct EditorOutputActionContext<'a> {
     pub(super) action: EditorAction,
     pub(super) active_capture: &'a capture::CaptureArtifact,
+    pub(super) output_format: EditorOutputFormat,
     pub(super) editor_tools: &'a editor::EditorTools,
     pub(super) pending_crop: Option<CropElement>,
     pub(super) source_pixbuf: &'a gtk4::gdk_pixbuf::Pixbuf,

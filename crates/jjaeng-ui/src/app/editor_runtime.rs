@@ -12,31 +12,30 @@ use jjaeng_core::storage::StorageService;
 
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Application, ApplicationWindow, Box as GtkBox, Button, DrawingArea, Frame, Label,
-    Orientation, Overflow, Overlay, Revealer, RevealerTransitionType, Scale, ScrolledWindow,
+    Align, Application, ApplicationWindow, Box as GtkBox, Button, DrawingArea, DropDown, Frame,
+    Label, Orientation, Overflow, Overlay, Revealer, RevealerTransitionType, Scale, ScrolledWindow,
 };
 
 use super::adaptive::EditorToolOptionPresets;
 use super::editor_history::{EditorHistoryAction, EditorHistoryRuntime};
 use super::editor_popup::{
-    EditorSelectionPalette, EditorTextInputPalette, ObjectDragState, TextPreeditState,
-    ToolDragPreview,
+    EditorOutputFormat, EditorSelectionPalette, EditorTextInputPalette, ObjectDragState,
+    TextPreeditState, ToolDragPreview,
 };
 use super::editor_viewport::{
     apply_editor_viewport_and_refresh, apply_fit_zoom_once, scroller_center_anchor,
     sync_editor_zoom_slider, zoom_editor_viewport_and_refresh, ZOOM_SLIDER_STEPS,
 };
-use super::hypr::{current_window_center, request_window_floating_with_geometry};
-use super::input_bridge::modifier_state;
-use super::layout::{
-    centered_window_geometry_for_capture, centered_window_geometry_for_point,
-    clamp_window_geometry_to_current_monitors,
+use super::hypr::{
+    current_window_center, focused_monitor_center, request_window_floating_with_geometry,
 };
+use super::input_bridge::modifier_state;
+use super::layout::{centered_window_geometry_for_capture, centered_window_geometry_for_point};
 use super::runtime_support::{
     close_all_preview_windows, close_editor_window_if_open, PreviewWindowRuntime, RuntimeSession,
     ToastRuntime,
 };
-use super::window_state::{RuntimeWindowGeometry, RuntimeWindowKind, RuntimeWindowState};
+use super::window_state::{RuntimeWindowKind, RuntimeWindowState};
 use super::{
     close_editor_if_open_and_clear, editor_window_default_geometry, editor_window_min_geometry,
     reset_editor_session_state, set_editor_pan_cursor, EditorOutputActionRuntime,
@@ -715,13 +714,13 @@ pub(super) fn render_editor_state(
             );
             let editor_save_button = icon_button(
                 "save-symbolic",
-                "Save (Ctrl+S)",
+                "Save as PNG (Ctrl+S)",
                 style_tokens.control_size as i32,
                 &["editor-action-button"],
             );
             let editor_copy_button = icon_button(
                 "copy-symbolic",
-                "Copy (Ctrl+C)",
+                "Copy PNG to clipboard (Ctrl+C)",
                 style_tokens.control_size as i32,
                 &["editor-action-button"],
             );
@@ -763,6 +762,32 @@ pub(super) fn render_editor_state(
             // File actions group (save/copy)
             let file_actions_group = GtkBox::new(Orientation::Horizontal, style_tokens.spacing_4);
             file_actions_group.add_css_class("editor-action-group");
+            let editor_output_format = Rc::new(Cell::new(EditorOutputFormat::default()));
+            let format_labels: Vec<&str> = EditorOutputFormat::ALL
+                .iter()
+                .map(|format| format.label())
+                .collect();
+            let editor_format_dropdown = DropDown::from_strings(&format_labels);
+            editor_format_dropdown.set_selected(editor_output_format.get().dropdown_index());
+            editor_format_dropdown.set_tooltip_text(Some("Save format"));
+            editor_format_dropdown.set_size_request(100, style_tokens.control_size as i32);
+            editor_format_dropdown.set_valign(Align::Center);
+            {
+                let editor_output_format = editor_output_format.clone();
+                let status_log_for_render = status_log_for_render.clone();
+                let editor_save_button = editor_save_button.clone();
+                editor_format_dropdown.connect_selected_notify(move |dropdown| {
+                    let selected_format =
+                        EditorOutputFormat::from_dropdown_index(dropdown.selected());
+                    editor_output_format.set(selected_format);
+                    editor_save_button.set_tooltip_text(Some(
+                        format!("Save as {} (Ctrl+S)", selected_format.label()).as_str(),
+                    ));
+                    *status_log_for_render.borrow_mut() =
+                        format!("save format: {}", selected_format.label());
+                });
+            }
+            file_actions_group.append(&editor_format_dropdown);
             file_actions_group.append(&editor_save_button);
             file_actions_group.append(&editor_copy_button);
             top_controls_left.append(&file_actions_group);
@@ -967,6 +992,7 @@ pub(super) fn render_editor_state(
                     pending_crop: pending_crop.clone(),
                     editor_source_pixbuf: editor_source_pixbuf.clone(),
                     editor_has_unsaved_changes: editor_has_unsaved_changes.clone(),
+                    editor_output_format: editor_output_format.clone(),
                     toast_duration_ms: style_tokens.toast_duration_ms,
                 };
                 connect_editor_output_button(
@@ -997,6 +1023,7 @@ pub(super) fn render_editor_state(
                     editor_tools: editor_tools.clone(),
                     pending_crop_for_close: pending_crop.clone(),
                     editor_source_pixbuf: editor_source_pixbuf.clone(),
+                    editor_output_format: editor_output_format.clone(),
                     style_tokens,
                 });
             }
@@ -1053,6 +1080,7 @@ pub(super) fn render_editor_state(
                     editor_tools: editor_tools.clone(),
                     pending_crop_for_close: pending_crop.clone(),
                     editor_source_pixbuf: editor_source_pixbuf.clone(),
+                    editor_output_format: editor_output_format.clone(),
                     style_tokens,
                     editor_close_guard: editor_close_guard.clone(),
                 });
@@ -1073,23 +1101,19 @@ pub(super) fn render_editor_state(
                     editor_canvas.grab_focus();
                 });
             }
-            let restored_editor_geometry = saved_editor_geometry
-                .map(|saved| {
-                    RuntimeWindowGeometry::with_position(
-                        saved.x,
-                        saved.y,
-                        editor_window_geometry.width,
-                        editor_window_geometry.height,
-                    )
-                })
-                .and_then(clamp_window_geometry_to_current_monitors)
-                .map(|geometry| (geometry.x, geometry.y, geometry.width, geometry.height));
             request_window_floating_with_geometry(
                 "editor",
                 &editor_title,
                 false,
                 Some(
-                    restored_editor_geometry
+                    focused_monitor_center()
+                        .map(|(center_x, center_y)| {
+                            centered_window_geometry_for_point(
+                                center_x,
+                                center_y,
+                                editor_window_geometry,
+                            )
+                        })
                         .or_else(|| {
                             preview_anchor.map(|(center_x, center_y)| {
                                 centered_window_geometry_for_point(

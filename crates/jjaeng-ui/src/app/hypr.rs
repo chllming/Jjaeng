@@ -31,6 +31,31 @@ fn parse_client_center(client: &serde_json::Value) -> Option<(i32, i32)> {
     Some((x.saturating_add(width / 2), y.saturating_add(height / 2)))
 }
 
+fn parse_monitor_geometry(monitor: &serde_json::Value) -> Option<(i32, i32, i32, i32)> {
+    let x = i32::try_from(monitor.get("x")?.as_i64()?).ok()?;
+    let y = i32::try_from(monitor.get("y")?.as_i64()?).ok()?;
+    let width = i32::try_from(monitor.get("width")?.as_i64()?).ok()?;
+    let height = i32::try_from(monitor.get("height")?.as_i64()?).ok()?;
+    if width <= 0 || height <= 0 {
+        return None;
+    }
+    Some((x, y, width, height))
+}
+
+fn focused_monitor_geometry_from_json(stdout: &[u8]) -> Option<(i32, i32, i32, i32)> {
+    let parsed: serde_json::Value = serde_json::from_slice(stdout).ok()?;
+    let monitors = parsed.as_array()?;
+    monitors
+        .iter()
+        .find(|monitor| {
+            monitor
+                .get("focused")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false)
+        })
+        .and_then(parse_monitor_geometry)
+}
+
 pub(super) fn hypr_client_match_from_json(
     stdout: &[u8],
     expected_title: &str,
@@ -259,6 +284,23 @@ pub(super) fn current_window_center(expected_title: &str) -> Option<(i32, i32)> 
     find_hypr_window_match(expected_title).and_then(|matched| matched.center)
 }
 
+pub(super) fn focused_monitor_geometry() -> Option<(i32, i32, i32, i32)> {
+    std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE")?;
+    let outcome = Command::new("hyprctl")
+        .args(["monitors", "-j"])
+        .output()
+        .ok()?;
+    if !outcome.status.success() {
+        return None;
+    }
+    focused_monitor_geometry_from_json(&outcome.stdout)
+}
+
+pub(super) fn focused_monitor_center() -> Option<(i32, i32)> {
+    let (x, y, width, height) = focused_monitor_geometry()?;
+    Some((x.saturating_add(width / 2), y.saturating_add(height / 2)))
+}
+
 pub(super) fn current_window_geometry(expected_title: &str) -> Option<(i32, i32, i32, i32)> {
     std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE")?;
     find_hypr_window_match(expected_title).and_then(|matched| matched.geometry)
@@ -307,6 +349,28 @@ mod tests {
         assert_eq!(item.address, "0x1");
         assert_eq!(item.center, Some((400, 400)));
         assert_eq!(item.geometry, Some((100, 200, 600, 400)));
+    }
+
+    #[test]
+    fn focused_monitor_geometry_from_json_parses_focused_monitor() {
+        let stdout = br#"[
+            {"name":"DP-1","focused":false,"x":0,"y":0,"width":1920,"height":1080},
+            {"name":"DP-2","focused":true,"x":1920,"y":0,"width":2560,"height":1440}
+        ]"#;
+
+        assert_eq!(
+            focused_monitor_geometry_from_json(stdout),
+            Some((1920, 0, 2560, 1440))
+        );
+    }
+
+    #[test]
+    fn focused_monitor_geometry_from_json_rejects_invalid_sizes() {
+        let stdout = br#"[
+            {"name":"DP-1","focused":true,"x":0,"y":0,"width":0,"height":1440}
+        ]"#;
+
+        assert_eq!(focused_monitor_geometry_from_json(stdout), None);
     }
 
     #[test]

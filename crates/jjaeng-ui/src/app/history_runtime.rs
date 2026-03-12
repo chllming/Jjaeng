@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::process::Command;
 use std::rc::Rc;
 
 use gtk4::prelude::*;
@@ -13,7 +12,7 @@ use jjaeng_core::notification;
 use jjaeng_core::state::{AppEvent, AppState, StateMachine};
 use jjaeng_core::storage::StorageService;
 
-use super::hypr::request_window_floating_with_geometry;
+use super::hypr::{focused_monitor_geometry, request_window_floating_with_geometry};
 use super::runtime_support::RuntimeSession;
 use crate::ui::StyleTokens;
 
@@ -260,34 +259,6 @@ fn history_window_geometry(style_tokens: StyleTokens) -> Option<(i32, i32, i32, 
         .saturating_sub(width)
         .saturating_sub(margin);
     let y = monitor_y.saturating_add(margin);
-    Some((x, y, width, height))
-}
-
-fn focused_monitor_geometry() -> Option<(i32, i32, i32, i32)> {
-    let outcome = Command::new("hyprctl")
-        .args(["monitors", "-j"])
-        .output()
-        .ok()?;
-    if !outcome.status.success() {
-        return None;
-    }
-
-    let payload: serde_json::Value = serde_json::from_slice(&outcome.stdout).ok()?;
-    let monitors = payload.as_array()?;
-    let monitor = monitors.iter().find(|monitor| {
-        monitor
-            .get("focused")
-            .and_then(serde_json::Value::as_bool)
-            .unwrap_or(false)
-    })?;
-
-    let x = i32::try_from(monitor.get("x")?.as_i64()?).ok()?;
-    let y = i32::try_from(monitor.get("y")?.as_i64()?).ok()?;
-    let width = i32::try_from(monitor.get("width")?.as_i64()?).ok()?;
-    let height = i32::try_from(monitor.get("height")?.as_i64()?).ok()?;
-    if width <= 0 || height <= 0 {
-        return None;
-    }
     Some((x, y, width, height))
 }
 

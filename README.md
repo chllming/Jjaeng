@@ -1,192 +1,99 @@
 # Jjaeng
 
-<p align="center">
-  <img src="./assets/banner.jpeg" alt="Jjaeng banner" width="100%" />
-</p>
-
 English | [한국어](README.ko.md)
 
-A Hyprland-focused screenshot utility for Wayland with a preview-first workflow and a lightweight annotation editor.
+Jjaeng is a Hyprland-first screenshot tool for Wayland with a background daemon, compact preview flow, screenshot history tile, and built-in annotation editor.
 
-Jjaeng is derived from [ChalKak](https://github.com/BitYoungjae/ChalKak) and keeps the upstream dual-license model. See [NOTICE](NOTICE).
+Jjaeng originates from [ChalKak](https://github.com/BitYoungjae/ChalKak). This repository keeps the upstream licensing model and includes attribution in [NOTICE](NOTICE).
 
-## Demo Video
+## What It Does
 
-<https://github.com/user-attachments/assets/2d2ed794-f86e-4216-b5f1-7dcb513791d4>
+- Capture fullscreen, region, or a selected window.
+- Run as a background daemon (`jjaengd`) with socket-based control.
+- Show a compact preview with fast `Save` / `Copy` actions.
+- Open a history tile with thumbnails, quick copy/save, and edit entrypoints.
+- Edit captures with blur, pen, arrow, rectangle, crop, text, and OCR tools.
+- Copy images to the clipboard as PNG.
+- Save editor output as PNG, JPEG, or WEBP from the editor format dropdown.
 
-## User Guides
+## Workspace
 
-- [English User Guide](docs/USER_GUIDE.md)
-- [한국어 사용자 가이드](docs/USER_GUIDE.ko.md)
+- `crates/jjaeng-core`: capture, storage, clipboard, OCR, IPC, history, and shared services
+- `crates/jjaeng-ui`: GTK runtime for preview, history, launchpad, and editor
+- `crates/jjaeng-daemon`: hidden daemon binary (`jjaengd`)
+- `crates/jjaeng-cli`: user-facing CLI binary (`jjaeng`)
 
-## Name Origin
+## Runtime Requirements
 
-`Jjaeng` is inspired by the Korean onomatopoeia `찰칵!`, the camera shutter click sound.
-
-## Highlights
-
-- Capture modes: fullscreen, region, and window.
-- Preview stage before final action (save, copy, edit, delete).
-- Built-in editor tools: select, pan, blur, pen, arrow, rectangle, crop, text, OCR.
-- Keyboard-centric workflow across preview and editor.
-- Configurable theme and editor navigation keybindings.
-- Startup cleanup for stale temporary captures.
-
-## Workspace Layout
-
-- `crates/jjaeng-core`: shared domain logic, storage, OCR, theming, IPC, and product identity.
-- `crates/jjaeng-ui`: GTK runtime for launchpad, preview, and editor windows.
-- `crates/jjaeng-daemon`: daemon entrypoint for background/runtime control.
-- `crates/jjaeng-cli`: the `jjaeng` user-facing binary and CLI integration tests.
-
-## Requirements
-
-Runtime dependencies:
-
-- `hyprctl` (from Hyprland)
+- Wayland
+- Hyprland
 - `grim`
 - `slurp`
-- `wl-copy` (from `wl-clipboard`)
+- `wl-clipboard`
 - GTK4 runtime libraries
-
-Environment assumptions:
-
-- Wayland + Hyprland session
-- `HOME` is set
-- `XDG_RUNTIME_DIR` is recommended (fallback: `/tmp/jjaeng`)
 
 ## Install
 
-### Pre-built binary (GitHub Releases)
-
-Download the latest `x86_64` Linux binary from [GitHub Releases](https://github.com/chllming/Jjaeng/releases):
-
-```bash
-# Download and extract
-curl -LO https://github.com/chllming/Jjaeng/releases/latest/download/jjaeng-x86_64-unknown-linux-gnu.tar.gz
-tar xzf jjaeng-x86_64-unknown-linux-gnu.tar.gz
-sudo install -Dm755 jjaeng /usr/local/bin/jjaeng
-```
-
 ### AUR
-
-Source build package:
 
 ```bash
 yay -S jjaeng
 ```
 
-Pre-built binary package (faster install, no build dependencies needed):
+Prebuilt binary package:
 
 ```bash
 yay -S jjaeng-bin
 ```
 
-For OCR text recognition support, also install the model files:
+Optional OCR models:
 
 ```bash
 yay -S jjaeng-ocr-models
 ```
 
-If the published AUR package is behind the current crate release, use the source build path below.
-
-### Build from source
-
-Prerequisites:
-
-- Rust toolchain (`rustup` recommended)
-- Build dependencies: `pkgconf`, `gtk4`, `cmake`
-- Runtime dependencies: `grim`, `slurp`, `wl-clipboard`, `hyprland`
-
-On Arch Linux, install all dependencies at once:
+### Build From Source
 
 ```bash
-sudo pacman -S rust pkgconf gtk4 cmake grim slurp wl-clipboard
+git clone https://github.com/chllming/Jjaeng.git
+cd Jjaeng
+cargo build --release --workspace
+install -Dm755 target/release/jjaeng ~/.local/bin/jjaeng
+install -Dm755 target/release/jjaengd ~/.local/bin/jjaengd
 ```
-
-Build and install:
-
-```bash
-git clone https://github.com/chllming/Jjaeng.git jjaeng
-cd jjaeng
-cargo install --path crates/jjaeng-cli
-```
-
-The `jjaeng` binary will be installed to `~/.cargo/bin/`. Make sure this directory is in your `PATH`.
 
 ## Usage
 
-Launchpad UI:
+Start the daemon:
 
 ```bash
-jjaeng --launchpad
+jjaengd
 ```
 
-Running `jjaeng` with no flags starts and exits immediately. Use `--help` to see all available options.
+Capture commands:
 
-Startup flags:
+```bash
+jjaeng --capture-region
+jjaeng --capture-window
+jjaeng --capture-full
+```
 
-- `--full` or `--capture-full`
-- `--region` or `--capture-region`
-- `--window` or `--capture-window`
-- `--launchpad`
-- `--version` / `-V` — print version (e.g. `Jjaeng 0.5.0 (abc1234)`)
-- `--help` / `-h` — print usage summary
+History and follow-up actions:
 
-Typical flow:
+```bash
+jjaeng --toggle-history
+jjaeng --open-history
+jjaeng --open-preview
+jjaeng --edit-latest
+jjaeng --copy-latest
+jjaeng --save-latest
+jjaeng --status-json
+```
 
-1. Capture (`full`, `region`, `window`).
-2. Preview the capture.
-3. Save/copy/delete, or open editor.
-4. Annotate in editor, then save/copy.
+## Desktop Integration
 
-## Keybindings
-
-Preview:
-
-- `s`: save
-- `c`: copy image
-- `e`: open editor
-- `o`: OCR (extract text from entire image)
-- `Delete`: delete capture
-- `Esc`: close preview
-
-Editor:
-
-- `Ctrl+S`: save
-- `Ctrl+C`: copy image
-- `Ctrl+Z`: undo
-- `Ctrl+Shift+Z`: redo
-- `Delete` / `Backspace`: delete selection
-- `Tab`: toggle tool options panel
-- `Esc`: select tool, or close editor when already in select mode
-
-Tool shortcuts:
-
-- `v` select
-- `h` pan
-- `b` blur
-- `p` pen
-- `a` arrow
-- `r` rectangle
-- `c` crop
-- `t` text
-- `o` OCR
-
-Text editing:
-
-- `Enter`: line break
-- `Ctrl+Enter`: commit text
-- `Ctrl+C`: copy selected text
-- `Esc`: exit text focus
-
-Default editor navigation:
-
-- Pan hold key: `Space`
-- Zoom in: `Ctrl++`, `Ctrl+=`, `Ctrl+KP_Add`
-- Zoom out: `Ctrl+-`, `Ctrl+_`, `Ctrl+KP_Subtract`
-- Actual size: `Ctrl+0`, `Ctrl+KP_0`
-- Fit: `Shift+1`
+- Waybar helper script: [scripts/jjaeng-waybar-status.sh](scripts/jjaeng-waybar-status.sh)
+- Omarchy/Hyprland bindings and daemon setup are expected to live in `~/.config`, not inside Omarchy-managed files
 
 ## Configuration
 
@@ -195,109 +102,24 @@ Config directory:
 - `$XDG_CONFIG_HOME/jjaeng/`
 - fallback: `$HOME/.config/jjaeng/`
 
-Files:
+Primary files:
 
+- `config.json`
 - `theme.json`
 - `keybindings.json`
-- `config.json`
 
-`theme.json` (summary):
+Notable setting:
 
-- `mode`: `system`, `light`, `dark`
-- `config.json`: application settings (e.g. `ocr_language`)
-- `colors`: supports shared + per-mode overrides
-- `colors.common` + `colors.dark` + `colors.light`
-- `editor`: supports shared + per-mode overrides
-- `editor.common` + `editor.dark` + `editor.light`
-- all objects can be partial; missing fields fall back to built-in defaults
-- merge order:
-- `built-in defaults -> common -> current mode`
-- `system` follows runtime desktop preference and falls back to dark when unavailable
-- legacy schema is still supported:
-- shared flat `editor` + `editor_modes.dark/light`
-- if both legacy and new keys are present, precedence is:
-- `editor(flat) -> editor.common -> editor_modes.<mode> -> editor.<mode>`
-- editor preset constraints:
-- `stroke_width_presets`: `1..=64`
-- `text_size_presets`: `8..=160`
-- each preset list: up to 6 unique items
-
-For full examples and field-by-field details, see:
-
-- `docs/USER_GUIDE.md`
-- `docs/USER_GUIDE.ko.md`
-
-Temporary captures:
-
-- `$XDG_RUNTIME_DIR/`
-- fallback: `/tmp/jjaeng/`
-
-Saved screenshots:
-
-- `$HOME/Pictures/`
+- `screenshot_dir`: overrides the default output folder (default: `$HOME/Pictures`)
 
 ## Development
 
-Common commands:
-
 ```bash
-cargo check
-cargo test
-cargo fmt --check
-cargo clippy --all-targets --all-features -D warnings
+cargo fmt --all
+cargo check --workspace
+cargo test --workspace
 ```
-
-Current module layout:
-
-- `src/app`: runtime orchestration and GTK lifecycle
-- `src/capture`: Hyprland/grim/slurp capture backends
-- `src/preview`: preview window behavior
-- `src/editor`: editor model and tool behavior
-- `src/input`: shortcut and navigation handling
-- `src/storage`: temp/save lifecycle and cleanup
-- `src/theme`, `src/ui`: theme/config + shared style tokens
-- `src/state`: app state machine
-- `src/clipboard`: clipboard integration (`wl-copy`)
-- `src/ocr`: OCR text recognition (PaddleOCR v5 / MNN)
-- `src/config`: config/keybinding/theme path helpers
-- `src/error`: application-level error/result types
-- `src/logging`: tracing subscriber setup
-
-## AUR Packaging Notes (for maintainers)
-
-`PKGBUILD` and `.SRCINFO` are committed in this repository.
-
-When releasing a new version:
-
-1. Match `PKGBUILD` `pkgver` to `Cargo.toml` `version`.
-2. Reset `pkgrel=1` when `pkgver` changes.
-3. Update `source` to `.../archive/refs/tags/vX.Y.Z.tar.gz`.
-4. Refresh checksums with `updpkgsums`.
-5. Regenerate `.SRCINFO` with `makepkg --printsrcinfo > .SRCINFO`.
-
-Dependency baseline:
-
-- `depends=('gtk4' 'hyprland' 'grim' 'slurp' 'wl-clipboard')`
-- `makedepends=('rust' 'cargo' 'pkgconf' 'gtk4' 'cmake')`
-- `optdepends=('jjaeng-ocr-models: OCR text recognition support')`
-
-Package name target: `jjaeng`.
-
-A separate AUR package `jjaeng-ocr-models` provides PaddleOCR v5 model files for OCR. Its packaging metadata lives in `aur/jjaeng-ocr-models/`.
-
-## Attribution
-
-- Upstream project: `ChalKak`
-- Upstream repository: `https://github.com/BitYoungjae/ChalKak`
-- Current repository: `https://github.com/chllming/Jjaeng`
 
 ## License
 
-`jjaeng` is dual-licensed under:
-
-- MIT
-- Apache-2.0
-
-SPDX expression: `MIT OR Apache-2.0`
-
-This matches the dependency landscape (mostly MIT and Apache-2.0-family permissive licenses) and keeps AUR/distribution reuse straightforward.
+Dual-licensed under MIT or Apache-2.0. See [LICENSE-MIT](LICENSE-MIT), [LICENSE-APACHE](LICENSE-APACHE), and [NOTICE](NOTICE).

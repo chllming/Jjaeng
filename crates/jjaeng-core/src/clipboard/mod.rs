@@ -96,11 +96,27 @@ fn resolve_absolute_path(path: &Path) -> ClipboardResult<PathBuf> {
 impl ClipboardBackend for WlCopyBackend {
     fn copy(&self, path: &Path) -> ClipboardResult<()> {
         let absolute_path = resolve_absolute_path(path)?;
+        let display = gdk::Display::default().ok_or(ClipboardError::DisplayUnavailable)?;
+        let clipboard = display.clipboard();
+
+        if is_png_path(&absolute_path) {
+            let image_bytes =
+                std::fs::read(&absolute_path).map_err(|source| ClipboardError::ReadFile {
+                    path: absolute_path,
+                    source,
+                })?;
+            let image_provider = gdk::ContentProvider::for_bytes(
+                MIME_IMAGE_PNG,
+                &glib::Bytes::from_owned(image_bytes),
+            );
+            return clipboard
+                .set_content(Some(&image_provider))
+                .map_err(|source| ClipboardError::SetContent { source });
+        }
+
         let uri_list_payload = uri_list_payload(path)?;
         let gnome_payload = gnome_copied_files_payload(path)?;
         let text_path_payload = plain_text_path_payload(path)?;
-        let display = gdk::Display::default().ok_or(ClipboardError::DisplayUnavailable)?;
-        let clipboard = display.clipboard();
 
         let gnome_provider = gdk::ContentProvider::for_bytes(
             MIME_GNOME_COPIED_FILES,
@@ -118,24 +134,12 @@ impl ClipboardBackend for WlCopyBackend {
             MIME_TEXT_PLAIN,
             &glib::Bytes::from_owned(text_path_payload.into_bytes()),
         );
-        let mut providers = vec![
+        let providers = vec![
             gnome_provider,
             uri_provider,
             text_provider,
             text_plain_provider,
         ];
-        if is_png_path(&absolute_path) {
-            let image_bytes =
-                std::fs::read(&absolute_path).map_err(|source| ClipboardError::ReadFile {
-                    path: absolute_path,
-                    source,
-                })?;
-            let image_provider = gdk::ContentProvider::for_bytes(
-                MIME_IMAGE_PNG,
-                &glib::Bytes::from_owned(image_bytes),
-            );
-            providers.push(image_provider);
-        }
         let provider = gdk::ContentProvider::new_union(&providers);
         clipboard
             .set_content(Some(&provider))

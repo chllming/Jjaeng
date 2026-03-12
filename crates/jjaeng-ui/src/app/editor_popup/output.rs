@@ -1,4 +1,5 @@
 use gtk4::gdk::prelude::GdkCairoContextExt;
+use std::fs;
 use std::path::Path;
 
 use jjaeng_core::clipboard::WlCopyBackend;
@@ -132,21 +133,34 @@ pub(in crate::app) fn execute_editor_output_action(ctx: EditorOutputActionContex
         return false;
     }
 
-    match super::super::actions::execute_editor_action(
-        ctx.active_capture,
-        ctx.action,
-        ctx.storage_service,
-        &WlCopyBackend,
-    ) {
+    let action_result = match ctx.action {
+        EditorAction::Save => save_editor_output(&ctx),
+        EditorAction::Copy => super::super::actions::execute_editor_action(
+            ctx.active_capture,
+            ctx.action,
+            ctx.storage_service,
+            &WlCopyBackend,
+        )
+        .map_err(|err| err.to_string()),
+        EditorAction::CloseRequested => Err("unsupported editor output action: close".to_string()),
+    };
+
+    match action_result {
         Ok(EditorEvent::Save { capture_id }) if ctx.action == EditorAction::Save => {
             *ctx.editor_has_unsaved_changes.borrow_mut() = false;
-            *ctx.status_log.borrow_mut() = format!("editor saved capture {capture_id}");
-            jjaeng_core::notification::send(format!("Saved {capture_id}"));
+            *ctx.status_log.borrow_mut() = format!(
+                "editor saved capture {capture_id} as {}",
+                ctx.output_format.label()
+            );
+            jjaeng_core::notification::send(format!(
+                "Saved {capture_id} as {}",
+                ctx.output_format.label()
+            ));
             true
         }
         Ok(EditorEvent::Copy { capture_id }) if ctx.action == EditorAction::Copy => {
-            *ctx.status_log.borrow_mut() = format!("editor copied capture {capture_id}");
-            jjaeng_core::notification::send(format!("Copied {capture_id}"));
+            *ctx.status_log.borrow_mut() = format!("editor copied capture {capture_id} as PNG");
+            jjaeng_core::notification::send(format!("Copied {capture_id} as PNG"));
             true
         }
         Ok(other) => {
@@ -166,4 +180,45 @@ pub(in crate::app) fn execute_editor_output_action(ctx: EditorOutputActionContex
             false
         }
     }
+}
+
+fn save_editor_output(ctx: &EditorOutputActionContext<'_>) -> Result<EditorEvent, String> {
+    if ctx.output_format == super::EditorOutputFormat::Png {
+        return super::super::actions::execute_editor_action(
+            ctx.active_capture,
+            ctx.action,
+            ctx.storage_service,
+            &WlCopyBackend,
+        )
+        .map_err(|err| err.to_string());
+    }
+
+    let target_path = ctx
+        .storage_service
+        .allocate_target_path_with_extension(
+            &ctx.active_capture.capture_id,
+            ctx.output_format.file_extension(),
+        )
+        .map_err(|err| {
+            format!(
+                "resolve {} output path failed: {err}",
+                ctx.output_format.label()
+            )
+        })?;
+
+    if let Some(parent) = target_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|err| format!("prepare save directory failed: {err}"))?;
+    }
+    let _ = fs::remove_file(&target_path);
+
+    let rendered = image::open(&ctx.active_capture.temp_path)
+        .map_err(|err| format!("read rendered PNG failed: {err}"))?;
+    rendered
+        .save_with_format(&target_path, ctx.output_format.image_format())
+        .map_err(|err| format!("write {} failed: {err}", ctx.output_format.label()))?;
+
+    Ok(EditorEvent::Save {
+        capture_id: ctx.active_capture.capture_id.clone(),
+    })
 }

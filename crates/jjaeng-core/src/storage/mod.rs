@@ -15,6 +15,8 @@ pub enum StorageError {
     MissingHomeDirectory,
     #[error("capture id is empty")]
     MissingCaptureId,
+    #[error("file extension is empty")]
+    MissingFileExtension,
     #[error("io error: {0}")]
     Io(#[from] io::Error),
 }
@@ -84,9 +86,21 @@ impl StorageService {
     }
 
     pub fn allocate_target_path(&self, capture_id: &str) -> StorageResult<PathBuf> {
+        self.allocate_target_path_with_extension(capture_id, "png")
+    }
+
+    pub fn allocate_target_path_with_extension(
+        &self,
+        capture_id: &str,
+        extension: &str,
+    ) -> StorageResult<PathBuf> {
         Self::validate_capture_id(capture_id)?;
+        let extension = extension.trim().trim_start_matches('.');
+        if extension.is_empty() {
+            return Err(StorageError::MissingFileExtension);
+        }
         let mut path = self.pictures_dir.clone();
-        path.push(format!("{capture_id}.png"));
+        path.push(format!("{capture_id}.{extension}"));
         Ok(path)
     }
 
@@ -218,6 +232,16 @@ mod tests {
             StorageService::with_paths(PathBuf::from("/tmp"), PathBuf::from("/home/test/Pictures"));
         let path = service.allocate_target_path("abc").unwrap();
         assert_eq!(path, PathBuf::from("/home/test/Pictures/abc.png"));
+    }
+
+    #[test]
+    fn allocate_target_path_with_extension_uses_requested_extension() {
+        let service =
+            StorageService::with_paths(PathBuf::from("/tmp"), PathBuf::from("/home/test/Pictures"));
+        let path = service
+            .allocate_target_path_with_extension("abc", "jpg")
+            .unwrap();
+        assert_eq!(path, PathBuf::from("/home/test/Pictures/abc.jpg"));
     }
 
     #[test]

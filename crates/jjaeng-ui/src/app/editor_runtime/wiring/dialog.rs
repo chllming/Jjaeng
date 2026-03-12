@@ -30,6 +30,7 @@ struct EditorCloseRequestRuntime {
     editor_tools: Rc<RefCell<editor::EditorTools>>,
     pending_crop_for_close: Rc<RefCell<Option<CropElement>>>,
     editor_source_pixbuf: Option<gtk4::gdk_pixbuf::Pixbuf>,
+    editor_output_format: Rc<Cell<crate::app::editor_popup::EditorOutputFormat>>,
     style_tokens: StyleTokens,
 }
 
@@ -120,6 +121,7 @@ fn open_editor_unsaved_close_dialog(
     let editor_toast_runtime = runtime.editor_toast_runtime.clone();
     let editor_tools = runtime.editor_tools.clone();
     let editor_source_pixbuf = runtime.editor_source_pixbuf.clone();
+    let editor_output_format = runtime.editor_output_format.clone();
     let pending_crop = runtime.pending_crop_for_close.clone();
     let close_runtime = runtime.clone();
     let capture_id = active_capture.capture_id.clone();
@@ -139,6 +141,7 @@ fn open_editor_unsaved_close_dialog(
                 let saved = execute_editor_output_action(EditorOutputActionContext {
                     action: EditorAction::Save,
                     active_capture: &active_capture,
+                    output_format: editor_output_format.get(),
                     editor_tools: &tools,
                     pending_crop: pending_crop.borrow().as_ref().copied(),
                     source_pixbuf,
@@ -237,6 +240,8 @@ pub(in crate::app::editor_runtime) struct EditorCloseDialogContext {
     pub(in crate::app::editor_runtime) editor_tools: Rc<RefCell<editor::EditorTools>>,
     pub(in crate::app::editor_runtime) pending_crop_for_close: Rc<RefCell<Option<CropElement>>>,
     pub(in crate::app::editor_runtime) editor_source_pixbuf: Option<gtk4::gdk_pixbuf::Pixbuf>,
+    pub(in crate::app::editor_runtime) editor_output_format:
+        Rc<Cell<crate::app::editor_popup::EditorOutputFormat>>,
     pub(in crate::app::editor_runtime) style_tokens: StyleTokens,
 }
 
@@ -256,6 +261,7 @@ pub(in crate::app::editor_runtime) fn connect_editor_close_dialog(
         editor_tools: context.editor_tools.clone(),
         pending_crop_for_close: context.pending_crop_for_close.clone(),
         editor_source_pixbuf: context.editor_source_pixbuf.clone(),
+        editor_output_format: context.editor_output_format.clone(),
         style_tokens: context.style_tokens,
     };
 
@@ -279,6 +285,8 @@ pub(in crate::app::editor_runtime) struct EditorWindowCloseRequestContext {
     pub(in crate::app::editor_runtime) editor_tools: Rc<RefCell<editor::EditorTools>>,
     pub(in crate::app::editor_runtime) pending_crop_for_close: Rc<RefCell<Option<CropElement>>>,
     pub(in crate::app::editor_runtime) editor_source_pixbuf: Option<gtk4::gdk_pixbuf::Pixbuf>,
+    pub(in crate::app::editor_runtime) editor_output_format:
+        Rc<Cell<crate::app::editor_popup::EditorOutputFormat>>,
     pub(in crate::app::editor_runtime) style_tokens: StyleTokens,
     pub(in crate::app::editor_runtime) editor_close_guard: Rc<Cell<bool>>,
 }
@@ -299,6 +307,7 @@ pub(in crate::app::editor_runtime) fn connect_editor_window_close_request(
         editor_tools: context.editor_tools.clone(),
         pending_crop_for_close: context.pending_crop_for_close.clone(),
         editor_source_pixbuf: context.editor_source_pixbuf.clone(),
+        editor_output_format: context.editor_output_format.clone(),
         style_tokens: context.style_tokens,
     };
     let editor_close_guard = context.editor_close_guard.clone();

@@ -312,6 +312,7 @@ struct EditorOutputActionRuntime {
     pending_crop: Rc<RefCell<Option<CropElement>>>,
     editor_source_pixbuf: Option<gtk4::gdk_pixbuf::Pixbuf>,
     editor_has_unsaved_changes: Rc<RefCell<bool>>,
+    editor_output_format: Rc<Cell<EditorOutputFormat>>,
     toast_duration_ms: u32,
 }
 
@@ -347,6 +348,7 @@ impl EditorOutputActionRuntime {
         let completed = execute_editor_output_action(EditorOutputActionContext {
             action,
             active_capture: &active_capture,
+            output_format: self.editor_output_format.get(),
             editor_tools: &tools,
             pending_crop: self.pending_crop.borrow().as_ref().copied(),
             source_pixbuf,
@@ -370,7 +372,10 @@ impl EditorOutputActionRuntime {
                 );
             }
             if matches!(action, EditorAction::Save) {
-                match service.allocate_target_path(&active_capture.capture_id) {
+                match service.allocate_target_path_with_extension(
+                    &active_capture.capture_id,
+                    self.editor_output_format.get().file_extension(),
+                ) {
                     Ok(saved_path) => {
                         if let Err(err) =
                             history_service.mark_saved(&active_capture.capture_id, &saved_path)
@@ -442,6 +447,10 @@ fn should_show_launchpad_for_remote_fallback(command: RemoteCommand) -> bool {
         command,
         RemoteCommand::OpenHistory | RemoteCommand::ToggleHistory
     )
+}
+
+fn is_history_remote_command(command: RemoteCommand) -> bool {
+    matches!(command, RemoteCommand::OpenHistory | RemoteCommand::ToggleHistory)
 }
 
 fn dispatch_remote_command(
@@ -643,6 +652,8 @@ impl App {
         let headless_startup_capture = !show_launchpad
             && !show_history
             && !matches!(startup_capture, StartupCaptureMode::None);
+        let headless_history_startup =
+            !show_launchpad && local_startup_remote_command.is_some_and(is_history_remote_command);
         let activate_once = Rc::new(Cell::new(false));
 
         application.connect_activate(move |app| {
@@ -653,12 +664,22 @@ impl App {
             install_lucide_icon_theme();
             let headless_hold_guard =
                 Rc::new(RefCell::new(None::<gtk4::gio::ApplicationHoldGuard>));
+            let history_startup_hold_guard =
+                Rc::new(RefCell::new(None::<gtk4::gio::ApplicationHoldGuard>));
             let startup_capture_completed = Rc::new(Cell::new(!headless_startup_capture));
             if headless_startup_capture || daemon_mode {
                 tracing::info!("holding app lifecycle for headless startup capture");
                 let hold_guard =
                     <gtk4::Application as gtk4::gio::prelude::ApplicationExtManual>::hold(app);
                 headless_hold_guard.borrow_mut().replace(hold_guard);
+            }
+            if headless_history_startup {
+                tracing::info!("holding app lifecycle for headless history startup");
+                let hold_guard =
+                    <gtk4::Application as gtk4::gio::prelude::ApplicationExtManual>::hold(app);
+                history_startup_hold_guard
+                    .borrow_mut()
+                    .replace(hold_guard);
             }
             let gtk_settings = gtk4::Settings::default();
             let theme_mode = resolve_runtime_theme_mode(theme_config.mode, gtk_settings.as_ref());
@@ -1008,6 +1029,12 @@ impl App {
                     command,
                     &render,
                 );
+                if headless_history_startup {
+                    let history_startup_hold_guard = history_startup_hold_guard.clone();
+                    gtk4::glib::idle_add_local_once(move || {
+                        let _ = history_startup_hold_guard.borrow_mut().take();
+                    });
+                }
             }
 
             tracing::info!("presenting startup launcher window");
@@ -1259,5 +1286,13 @@ mod tests {
             0,
             true
         ));
+    }
+
+    #[test]
+    fn history_remote_command_detection_matches_open_and_toggle_only() {
+        assert!(is_history_remote_command(RemoteCommand::OpenHistory));
+        assert!(is_history_remote_command(RemoteCommand::ToggleHistory));
+        assert!(!is_history_remote_command(RemoteCommand::OpenPreview));
+        assert!(!is_history_remote_command(RemoteCommand::CaptureRegion));
     }
 }
