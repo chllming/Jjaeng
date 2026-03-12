@@ -1,0 +1,15 @@
+[package]
+name = "jjaeng-daemon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Hidden daemon entrypoint for Jjaeng"
+repository = "https://github.com/chllming/Jjaeng"
+homepage = "https://github.com/chllming/Jjaeng"
+
+[[bin]]
+name = "jjaengd"
+path = "src/main.rs"
+
+[dependencies]
+jjaeng-ui = { path = "../jjaeng-ui" }

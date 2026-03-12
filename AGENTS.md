@@ -1,16 +1,19 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `src/main.rs` is a thin CLI entrypoint that calls `chalkak::run()`.
-- `src/lib.rs` wires top-level modules and shared result/error exports.
-- Core domains are split by module: `src/app/` (runtime orchestration), `src/capture/`, `src/preview/`, `src/editor/`, `src/input/`, `src/state/`, `src/storage/`, `src/theme/`, `src/ui/`, `src/clipboard/`, `src/ocr/`, and `src/logging/`.
-- Tests are colocated with implementation using `#[cfg(test)]`; there is no separate `tests/` directory currently.
+- Workspace root is `Cargo.toml`; the legacy single-crate layout is retired.
+- `crates/jjaeng-core/` owns domain logic, storage, OCR, theming, IPC, and shared identity/config helpers.
+- `crates/jjaeng-ui/` owns the GTK runtime, preview/editor windows, launchpad, and Hyprland-facing UI wiring.
+- `crates/jjaeng-daemon/` provides the daemon binary entrypoint.
+- `crates/jjaeng-cli/` provides the end-user `jjaeng` binary and CLI tests.
+- Tests are mostly colocated with implementation; CLI integration tests live under `crates/jjaeng-cli/tests/`.
 
 ## Build, Test, and Development Commands
-- `cargo check` : fast compile/type validation before commits.
-- `cargo test` : runs module unit tests.
+- `cargo check --workspace` : fast compile/type validation before commits.
+- `cargo test --workspace` : runs workspace unit and CLI integration tests.
 - `cargo fmt --check` : enforces formatting used in CI/PR checks.
-- `cargo run` : launches the app locally (requires Hyprland-compatible runtime).
+- `cargo run -p jjaeng-cli -- --help` : exercises the CLI package.
+- `cargo run -p jjaeng-daemon --` : launches the daemon entrypoint locally.
 - `cargo clippy --all-targets --all-features -D warnings` : optional but recommended lint gate.
 
 ## Coding Style & Naming Conventions
@@ -41,15 +44,15 @@
 
 ## Version & Release Notes
 - Project versioning follows Semantic Versioning (SemVer).
-- Canonical app version lives in `Cargo.toml` (`version = "X.Y.Z"`).
+- Canonical app version lives in the workspace root `Cargo.toml` (`[workspace.package].version = "X.Y.Z"`).
 - For a new upstream release, update `Cargo.toml`, run `cargo check` to regenerate `Cargo.lock`, create annotated Git tag `vX.Y.Z`, and keep AUR metadata in sync.
 - **Always commit `Cargo.lock` together with `Cargo.toml`** when bumping the version — CI uses `--locked` and will fail if the lock file is stale.
 - Update `PKGBUILD` with `pkgver=X.Y.Z` and reset `pkgrel=1` when `pkgver` changes.
 - If only packaging metadata changes (no upstream version bump), keep `pkgver` and increment `pkgrel`.
 - After tag push, refresh AUR metadata with `updpkgsums` and regenerate `.SRCINFO` via `makepkg --printsrcinfo > .SRCINFO`.
 - Commit packaging updates with only `PKGBUILD` and `.SRCINFO` for AUR sync flow.
-- Prefer using the `chalkak-release` skill for end-to-end release steps and guardrails.
+- Preserve upstream attribution and license texts when reshaping packaging/docs; `NOTICE`, `LICENSE-MIT`, and `LICENSE-APACHE` are part of the release surface.
 
 ## Configuration & Runtime Notes
-- User config files live at `$XDG_CONFIG_HOME/chalkak/` (fallback `$HOME/.config/chalkak/`), including `theme.json` and `keybindings.json`.
-- Temporary captures are created under `$XDG_RUNTIME_DIR/chalkak/`; preserve cleanup behavior when changing storage/capture code.
+- User config files live at `$XDG_CONFIG_HOME/jjaeng/` (fallback `$HOME/.config/jjaeng/`), with fallback reads from legacy `chalkak/` paths for compatibility.
+- Temporary captures are created under `$XDG_RUNTIME_DIR/jjaeng/` (fallback `/tmp/jjaeng`).

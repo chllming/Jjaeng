@@ -1,0 +1,11 @@
+pkgbase = jjaeng-ocr-models
+	pkgdesc = PaddleOCR v5 model files for Jjaeng OCR feature
+	pkgver = 1
+	pkgrel = 1
+	url = https://github.com/chllming/Jjaeng
+	arch = any
+	license = Apache-2.0
+	source = jjaeng-ocr-models-v1.tar.gz::https://github.com/chllming/Jjaeng/releases/download/ocr-models-v1/jjaeng-ocr-models-v1.tar.gz
+	sha256sums = SKIP
+
+pkgname = jjaeng-ocr-models

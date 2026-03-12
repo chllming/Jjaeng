@@ -1,8 +1,8 @@
-pkgbase = chalkak
+pkgbase = jjaeng
 	pkgdesc = Hyprland screenshot preview and editor utility
-	pkgver = 0.5.2
+	pkgver = 0.6.0
 	pkgrel = 1
-	url = https://github.com/bityoungjae/chalkak
+	url = https://github.com/chllming/Jjaeng
 	arch = x86_64
 	arch = aarch64
 	license = MIT
@@ -19,9 +19,9 @@ pkgbase = chalkak
 	depends = grim
 	depends = slurp
 	depends = wl-clipboard
-	optdepends = chalkak-ocr-models: OCR text recognition support
+	optdepends = jjaeng-ocr-models: OCR text recognition support
 	options = !lto
-	source = chalkak-0.5.2.tar.gz::https://github.com/bityoungjae/chalkak/archive/refs/tags/v0.5.2.tar.gz
-	sha256sums = ca42b96039ad42497ee58692f330a8cebf53397667083e2a3501026ac217e941
+	source = jjaeng-0.6.0.tar.gz::https://github.com/chllming/Jjaeng/archive/refs/tags/v0.6.0.tar.gz
+	sha256sums = SKIP
 
-pkgname = chalkak
+pkgname = jjaeng

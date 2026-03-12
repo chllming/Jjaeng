@@ -1,12 +1,14 @@
-# ChalKak
+# Jjaeng
 
 <p align="center">
-  <img src="./assets/banner.jpeg" alt="ChalKak banner" width="100%" />
+  <img src="./assets/banner.jpeg" alt="Jjaeng banner" width="100%" />
 </p>
 
 English | [한국어](README.ko.md)
 
 A Hyprland-focused screenshot utility for Wayland with a preview-first workflow and a lightweight annotation editor.
+
+Jjaeng is derived from [ChalKak](https://github.com/BitYoungjae/ChalKak) and keeps the upstream dual-license model. See [NOTICE](NOTICE).
 
 ## Demo Video
 
@@ -19,7 +21,7 @@ A Hyprland-focused screenshot utility for Wayland with a preview-first workflow 
 
 ## Name Origin
 
-`ChalKak` is inspired by the Korean onomatopoeia `찰칵!`, the camera shutter click sound.
+`Jjaeng` is inspired by the Korean onomatopoeia `찰칵!`, the camera shutter click sound.
 
 ## Highlights
 
@@ -29,6 +31,13 @@ A Hyprland-focused screenshot utility for Wayland with a preview-first workflow 
 - Keyboard-centric workflow across preview and editor.
 - Configurable theme and editor navigation keybindings.
 - Startup cleanup for stale temporary captures.
+
+## Workspace Layout
+
+- `crates/jjaeng-core`: shared domain logic, storage, OCR, theming, IPC, and product identity.
+- `crates/jjaeng-ui`: GTK runtime for launchpad, preview, and editor windows.
+- `crates/jjaeng-daemon`: daemon entrypoint for background/runtime control.
+- `crates/jjaeng-cli`: the `jjaeng` user-facing binary and CLI integration tests.
 
 ## Requirements
 
@@ -44,19 +53,19 @@ Environment assumptions:
 
 - Wayland + Hyprland session
 - `HOME` is set
-- `XDG_RUNTIME_DIR` is recommended (fallback: `/tmp/chalkak`)
+- `XDG_RUNTIME_DIR` is recommended (fallback: `/tmp/jjaeng`)
 
 ## Install
 
 ### Pre-built binary (GitHub Releases)
 
-Download the latest `x86_64` Linux binary from [GitHub Releases](https://github.com/BitYoungjae/ChalKak/releases):
+Download the latest `x86_64` Linux binary from [GitHub Releases](https://github.com/chllming/Jjaeng/releases):
 
 ```bash
 # Download and extract
-curl -LO https://github.com/BitYoungjae/ChalKak/releases/latest/download/chalkak-x86_64-unknown-linux-gnu.tar.gz
-tar xzf chalkak-x86_64-unknown-linux-gnu.tar.gz
-sudo install -Dm755 chalkak /usr/local/bin/chalkak
+curl -LO https://github.com/chllming/Jjaeng/releases/latest/download/jjaeng-x86_64-unknown-linux-gnu.tar.gz
+tar xzf jjaeng-x86_64-unknown-linux-gnu.tar.gz
+sudo install -Dm755 jjaeng /usr/local/bin/jjaeng
 ```
 
 ### AUR
@@ -64,19 +73,19 @@ sudo install -Dm755 chalkak /usr/local/bin/chalkak
 Source build package:
 
 ```bash
-yay -S chalkak
+yay -S jjaeng
 ```
 
 Pre-built binary package (faster install, no build dependencies needed):
 
 ```bash
-yay -S chalkak-bin
+yay -S jjaeng-bin
 ```
 
 For OCR text recognition support, also install the model files:
 
 ```bash
-yay -S chalkak-ocr-models
+yay -S jjaeng-ocr-models
 ```
 
 If the published AUR package is behind the current crate release, use the source build path below.
@@ -98,22 +107,22 @@ sudo pacman -S rust pkgconf gtk4 cmake grim slurp wl-clipboard
 Build and install:
 
 ```bash
-git clone https://github.com/BitYoungjae/ChalKak.git chalkak
-cd chalkak
-cargo install --path .
+git clone https://github.com/chllming/Jjaeng.git jjaeng
+cd jjaeng
+cargo install --path crates/jjaeng-cli
 ```
 
-The `chalkak` binary will be installed to `~/.cargo/bin/`. Make sure this directory is in your `PATH`.
+The `jjaeng` binary will be installed to `~/.cargo/bin/`. Make sure this directory is in your `PATH`.
 
 ## Usage
 
 Launchpad UI:
 
 ```bash
-chalkak --launchpad
+jjaeng --launchpad
 ```
 
-Running `chalkak` with no flags starts and exits immediately. Use `--help` to see all available options.
+Running `jjaeng` with no flags starts and exits immediately. Use `--help` to see all available options.
 
 Startup flags:
 
@@ -121,7 +130,7 @@ Startup flags:
 - `--region` or `--capture-region`
 - `--window` or `--capture-window`
 - `--launchpad`
-- `--version` / `-V` — print version (e.g. `ChalKak 0.5.0 (abc1234)`)
+- `--version` / `-V` — print version (e.g. `Jjaeng 0.5.0 (abc1234)`)
 - `--help` / `-h` — print usage summary
 
 Typical flow:
@@ -183,8 +192,8 @@ Default editor navigation:
 
 Config directory:
 
-- `$XDG_CONFIG_HOME/chalkak/`
-- fallback: `$HOME/.config/chalkak/`
+- `$XDG_CONFIG_HOME/jjaeng/`
+- fallback: `$HOME/.config/jjaeng/`
 
 Files:
 
@@ -221,7 +230,7 @@ For full examples and field-by-field details, see:
 Temporary captures:
 
 - `$XDG_RUNTIME_DIR/`
-- fallback: `/tmp/chalkak/`
+- fallback: `/tmp/jjaeng/`
 
 Saved screenshots:
 
@@ -270,20 +279,21 @@ Dependency baseline:
 
 - `depends=('gtk4' 'hyprland' 'grim' 'slurp' 'wl-clipboard')`
 - `makedepends=('rust' 'cargo' 'pkgconf' 'gtk4' 'cmake')`
-- `optdepends=('chalkak-ocr-models: OCR text recognition support')`
+- `optdepends=('jjaeng-ocr-models: OCR text recognition support')`
 
-Package name target: `chalkak`.
+Package name target: `jjaeng`.
 
-A separate AUR package `chalkak-ocr-models` provides PaddleOCR v5 model files for OCR. Its packaging metadata lives in `aur/chalkak-ocr-models/`.
+A separate AUR package `jjaeng-ocr-models` provides PaddleOCR v5 model files for OCR. Its packaging metadata lives in `aur/jjaeng-ocr-models/`.
 
-## Maintainer
+## Attribution
 
-- Name: `BitYoungjae`
-- Email: `bityoungjae@gmail.com`
+- Upstream project: `ChalKak`
+- Upstream repository: `https://github.com/BitYoungjae/ChalKak`
+- Current repository: `https://github.com/chllming/Jjaeng`
 
 ## License
 
-`chalkak` is dual-licensed under:
+`jjaeng` is dual-licensed under:
 
 - MIT
 - Apache-2.0

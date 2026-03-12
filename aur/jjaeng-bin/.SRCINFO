@@ -1,0 +1,20 @@
+pkgbase = jjaeng-bin
+	pkgdesc = Hyprland screenshot preview and editor utility (prebuilt binary)
+	pkgver = 0.6.0
+	pkgrel = 1
+	url = https://github.com/chllming/Jjaeng
+	arch = x86_64
+	license = MIT
+	license = Apache-2.0
+	depends = gtk4
+	depends = hyprland
+	depends = grim
+	depends = slurp
+	depends = wl-clipboard
+	optdepends = jjaeng-ocr-models: OCR text recognition support
+	provides = jjaeng
+	conflicts = jjaeng
+	source = jjaeng-bin-0.6.0-x86_64.tar.gz::https://github.com/chllming/Jjaeng/releases/download/v0.6.0/jjaeng-x86_64-unknown-linux-gnu.tar.gz
+	sha256sums = SKIP
+
+pkgname = jjaeng-bin

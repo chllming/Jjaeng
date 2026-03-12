@@ -1,8 +1,8 @@
-# ChalKak User Guide
+# Jjaeng User Guide
 
 [한국어 가이드](USER_GUIDE.ko.md)
 
-ChalKak is a preview-first screenshot tool for Wayland + Hyprland. Capture, review, annotate, and share — all from the keyboard.
+Jjaeng is a preview-first screenshot tool for Wayland + Hyprland. Capture, review, annotate, and share — all from the keyboard.
 
 ## Demo
 
@@ -32,9 +32,9 @@ ChalKak is a preview-first screenshot tool for Wayland + Hyprland. Capture, revi
 
 ## 1. Quick Start
 
-If you are setting up ChalKak for the first time:
+If you are setting up Jjaeng for the first time:
 
-1. Install ChalKak and confirm the binary: `which chalkak`
+1. Install Jjaeng and confirm the binary: `which jjaeng`
 2. Set up Hyprland keybindings ([Section 10](#10-hyprland-keybinding-setup)).
 3. Reload Hyprland: `hyprctl reload`
 4. Press `Print` to capture a region. The preview window opens automatically.
@@ -69,7 +69,7 @@ That's it. The recommended workflow is keybinding-driven — bind capture comman
 
 | Package | Purpose |
 |---------|---------|
-| `chalkak-ocr-models` | OCR text recognition (PaddleOCR v5 model files) |
+| `jjaeng-ocr-models` | OCR text recognition (PaddleOCR v5 model files) |
 
 **Verify everything at once:**
 
@@ -83,48 +83,48 @@ hyprctl version && grim -h && slurp -h && wl-copy --help && echo "All dependenci
 
 ### Pre-built binary (GitHub Releases)
 
-Download the latest `x86_64` Linux binary from [GitHub Releases](https://github.com/BitYoungjae/ChalKak/releases):
+Download the latest `x86_64` Linux binary from [GitHub Releases](https://github.com/chllming/Jjaeng/releases):
 
 ```bash
-curl -LO https://github.com/BitYoungjae/ChalKak/releases/latest/download/chalkak-x86_64-unknown-linux-gnu.tar.gz
-tar xzf chalkak-x86_64-unknown-linux-gnu.tar.gz
-sudo install -Dm755 chalkak /usr/local/bin/chalkak
+curl -LO https://github.com/chllming/Jjaeng/releases/latest/download/jjaeng-x86_64-unknown-linux-gnu.tar.gz
+tar xzf jjaeng-x86_64-unknown-linux-gnu.tar.gz
+sudo install -Dm755 jjaeng /usr/local/bin/jjaeng
 ```
 
 ### From AUR
 
 ```bash
 # Source build package
-yay -S chalkak
+yay -S jjaeng
 
 # Or pre-built binary package (faster, no build dependencies)
-yay -S chalkak-bin
+yay -S jjaeng-bin
 
 # Optional: install OCR model files for text recognition
-yay -S chalkak-ocr-models
+yay -S jjaeng-ocr-models
 ```
 
 ### From source
 
 ```bash
-git clone <repo-url> chalkak
-cd chalkak
-cargo build --release
-# Binary is at target/release/chalkak
+git clone <repo-url> jjaeng
+cd jjaeng
+cargo build --release -p jjaeng-cli
+# Binary is at target/release/jjaeng
 ```
 
 ### Verify
 
 ```bash
-chalkak --version
-# Expected: ChalKak 0.5.0 (abc1234)
+jjaeng --version
+# Expected: Jjaeng 0.5.0 (abc1234)
 ```
 
 ---
 
 ## 4. Capture Modes
 
-ChalKak supports three capture modes and a launchpad mode:
+Jjaeng supports three capture modes and a launchpad mode:
 
 | Flag | Short form | Behavior |
 |------|------------|----------|
@@ -132,16 +132,16 @@ ChalKak supports three capture modes and a launchpad mode:
 | `--capture-window` | `--window` | Immediately starts window selection |
 | `--capture-full` | `--full` | Immediately captures the entire screen |
 | `--launchpad` | — | Opens the launchpad window (primarily for development) |
-| `--version` | `-V` | Print version string (e.g. `ChalKak 0.5.0 (abc1234)`) and exit |
+| `--version` | `-V` | Print version string (e.g. `Jjaeng 0.5.0 (abc1234)`) and exit |
 | `--help` | `-h` | Print usage summary and exit |
 
 ```bash
-chalkak --region        # Select and capture a region (recommended)
-chalkak --window        # Select and capture a window
-chalkak --full          # Capture full screen
-chalkak --launchpad     # Launchpad UI (primarily for development)
-chalkak --version       # Print version and exit
-chalkak --help          # Print usage and exit
+jjaeng --region        # Select and capture a region (recommended)
+jjaeng --window        # Select and capture a window
+jjaeng --full          # Capture full screen
+jjaeng --launchpad     # Launchpad UI (primarily for development)
+jjaeng --version       # Print version and exit
+jjaeng --help          # Print usage and exit
 ```
 
 The recommended approach is to bind these commands to Hyprland hotkeys ([Section 10](#10-hyprland-keybinding-setup)) and trigger captures directly from the keyboard. The `--launchpad` mode provides a button-based UI but is mainly intended for development and testing.
@@ -154,7 +154,7 @@ If multiple capture flags are given, the last one wins.
 
 ## 5. Workflow Overview
 
-ChalKak follows a **Capture → Preview → (optional) Edit → Output** flow:
+Jjaeng follows a **Capture → Preview → (optional) Edit → Output** flow:
 
 ```mermaid
 graph LR
@@ -281,7 +281,7 @@ Preview is a useful safety gate: verify the capture content before committing to
 - Drag to define a region, then text is recognized and copied to clipboard.
 - In Preview, press `o` to extract text from the entire image.
 - Recognized text is automatically copied to clipboard with a toast notification.
-- Requires `chalkak-ocr-models` package (PaddleOCR v5 model files).
+- Requires `jjaeng-ocr-models` package (PaddleOCR v5 model files).
 - Language is auto-detected from system `LANG` environment variable. Override via `ocr_language` in `config.json` ([Section 14.3](#143-configjson)).
 - Supported languages: Korean (`ko`), English (`en`), Chinese (`zh`), Latin, Cyrillic (`ru`), Arabic (`ar`), Thai (`th`), Greek (`el`), Devanagari (`hi`), Tamil (`ta`), Telugu (`te`).
 
@@ -308,55 +308,55 @@ Default editor navigation (customizable via `keybindings.json`):
 
 ## 10. Hyprland Keybinding Setup
 
-This section connects ChalKak to your Hyprland hotkeys. For most users, this is the only setup needed after installation.
+This section connects Jjaeng to your Hyprland hotkeys. For most users, this is the only setup needed after installation.
 
 ### 10.1 Check binary path
 
 ```bash
-which chalkak
+which jjaeng
 ```
 
-- AUR install: typically `/usr/bin/chalkak`
-- Cargo install: typically `~/.cargo/bin/chalkak`
+- AUR install: typically `/usr/bin/jjaeng`
+- Cargo install: typically `~/.cargo/bin/jjaeng`
 
 ### 10.2 Create a dedicated config file
 
-Keep ChalKak bindings in their own file so your main config stays clean.
+Keep Jjaeng bindings in their own file so your main config stays clean.
 
 Add this line once to `~/.config/hypr/hyprland.conf`:
 
 ```conf
-source = ~/.config/hypr/chalkak.conf
+source = ~/.config/hypr/jjaeng.conf
 ```
 
 ### 10.3 Recommended preset (Print key)
 
-Copy this into `~/.config/hypr/chalkak.conf`:
+Copy this into `~/.config/hypr/jjaeng.conf`:
 
 ```conf
-# ChalKak screenshot bindings (Print-based)
+# Jjaeng screenshot bindings (Print-based)
 unbind = , Print
 unbind = SHIFT, Print
 unbind = CTRL, Print
-bindd = , Print, ChalKak region capture, exec, /usr/bin/chalkak --capture-region
-bindd = SHIFT, Print, ChalKak window capture, exec, /usr/bin/chalkak --capture-window
-bindd = CTRL, Print, ChalKak full capture, exec, /usr/bin/chalkak --capture-full
+bindd = , Print, Jjaeng region capture, exec, /usr/bin/jjaeng --capture-region
+bindd = SHIFT, Print, Jjaeng window capture, exec, /usr/bin/jjaeng --capture-window
+bindd = CTRL, Print, Jjaeng full capture, exec, /usr/bin/jjaeng --capture-full
 ```
 
-> Replace `/usr/bin/chalkak` with your actual path if different. The `unbind` lines prevent conflicts with existing bindings.
+> Replace `/usr/bin/jjaeng` with your actual path if different. The `unbind` lines prevent conflicts with existing bindings.
 
 **Or generate it automatically:**
 
 ```bash
-CHALKAK_BIN="$(command -v chalkak)"
+JJAENG_BIN="$(command -v jjaeng)"
 mkdir -p "$HOME/.config/hypr"
-cat > "$HOME/.config/hypr/chalkak.conf" <<EOF
+cat > "$HOME/.config/hypr/jjaeng.conf" <<EOF
 unbind = , Print
 unbind = SHIFT, Print
 unbind = CTRL, Print
-bindd = , Print, ChalKak region capture, exec, ${CHALKAK_BIN} --capture-region
-bindd = SHIFT, Print, ChalKak window capture, exec, ${CHALKAK_BIN} --capture-window
-bindd = CTRL, Print, ChalKak full capture, exec, ${CHALKAK_BIN} --capture-full
+bindd = , Print, Jjaeng region capture, exec, ${JJAENG_BIN} --capture-region
+bindd = SHIFT, Print, Jjaeng window capture, exec, ${JJAENG_BIN} --capture-window
+bindd = CTRL, Print, Jjaeng full capture, exec, ${JJAENG_BIN} --capture-full
 EOF
 ```
 
@@ -369,9 +369,9 @@ I'm used to the macOS screenshot shortcuts (`⌥⇧3`/`⌥⇧4`), so I recreated
 unbind = ALT SHIFT, 2
 unbind = ALT SHIFT, 3
 unbind = ALT SHIFT, 4
-bindd = ALT SHIFT, code:11, Chalkak region capture, exec, chalkak --capture-region
-bindd = ALT SHIFT, code:12, Chalkak window capture, exec, chalkak --capture-window
-bindd = ALT SHIFT, code:13, Chalkak full capture, exec, chalkak --capture-full
+bindd = ALT SHIFT, code:11, Chalkak region capture, exec, jjaeng --capture-region
+bindd = ALT SHIFT, code:12, Chalkak window capture, exec, jjaeng --capture-window
+bindd = ALT SHIFT, code:13, Chalkak full capture, exec, jjaeng --capture-full
 ```
 
 > `code:N` binds by keycode in Hyprland, locking to the physical key position regardless of keyboard layout. Useful if you switch between layouts.
@@ -385,9 +385,9 @@ bindd = ALT SHIFT, code:13, Chalkak full capture, exec, chalkak --capture-full
 unbind = ALT SHIFT, R
 unbind = ALT SHIFT, W
 unbind = ALT SHIFT, F
-bindd = ALT SHIFT, R, ChalKak region capture, exec, /usr/bin/chalkak --capture-region
-bindd = ALT SHIFT, W, ChalKak window capture, exec, /usr/bin/chalkak --capture-window
-bindd = ALT SHIFT, F, ChalKak full capture, exec, /usr/bin/chalkak --capture-full
+bindd = ALT SHIFT, R, Jjaeng region capture, exec, /usr/bin/jjaeng --capture-region
+bindd = ALT SHIFT, W, Jjaeng window capture, exec, /usr/bin/jjaeng --capture-window
+bindd = ALT SHIFT, F, Jjaeng full capture, exec, /usr/bin/jjaeng --capture-full
 ```
 </details>
 
@@ -398,9 +398,9 @@ bindd = ALT SHIFT, F, ChalKak full capture, exec, /usr/bin/chalkak --capture-ful
 unbind = ALT SHIFT, 2
 unbind = ALT SHIFT, 3
 unbind = ALT SHIFT, 4
-bindd = ALT SHIFT, 2, ChalKak region capture, exec, /usr/bin/chalkak --capture-region
-bindd = ALT SHIFT, 3, ChalKak window capture, exec, /usr/bin/chalkak --capture-window
-bindd = ALT SHIFT, 4, ChalKak full capture, exec, /usr/bin/chalkak --capture-full
+bindd = ALT SHIFT, 2, Jjaeng region capture, exec, /usr/bin/jjaeng --capture-region
+bindd = ALT SHIFT, 3, Jjaeng window capture, exec, /usr/bin/jjaeng --capture-window
+bindd = ALT SHIFT, 4, Jjaeng full capture, exec, /usr/bin/jjaeng --capture-full
 ```
 </details>
 
@@ -409,7 +409,7 @@ bindd = ALT SHIFT, 4, ChalKak full capture, exec, /usr/bin/chalkak --capture-ful
 
 ```conf
 unbind = , Print
-bindd = , Print, ChalKak region capture, exec, /usr/bin/chalkak --capture-region
+bindd = , Print, Jjaeng region capture, exec, /usr/bin/jjaeng --capture-region
 ```
 </details>
 
@@ -417,14 +417,14 @@ bindd = , Print, ChalKak region capture, exec, /usr/bin/chalkak --capture-region
 
 ```bash
 hyprctl reload
-hyprctl binds -j | jq -r '.[] | select(.description|test("ChalKak")) | [.description,.arg] | @tsv'
+hyprctl binds -j | jq -r '.[] | select(.description|test("Jjaeng")) | [.description,.arg] | @tsv'
 ```
 
-If you see `ChalKak ... capture` entries with the correct path, bindings are active.
+If you see `Jjaeng ... capture` entries with the correct path, bindings are active.
 
 ### 10.7 Omarchy users
 
-If you use Omarchy, ensure `source = ~/.config/hypr/chalkak.conf` is loaded within your Hyprland config chain. If you manage config via symlinked dotfiles, edit the link target. If keybindings stopped working after switching from Cargo to AUR install, check for stale paths in your bindings.
+If you use Omarchy, ensure `source = ~/.config/hypr/jjaeng.conf` is loaded within your Hyprland config chain. If you manage config via symlinked dotfiles, edit the link target. If keybindings stopped working after switching from Cargo to AUR install, check for stale paths in your bindings.
 
 ---
 
@@ -432,19 +432,19 @@ If you use Omarchy, ensure `source = ~/.config/hypr/chalkak.conf` is loaded with
 
 | Type | Path | Example |
 |------|------|---------|
-| Temp captures | `$XDG_RUNTIME_DIR/` (fallback: `/tmp/chalkak/`) | `capture_<id>.png` |
+| Temp captures | `$XDG_RUNTIME_DIR/` (fallback: `/tmp/jjaeng/`) | `capture_<id>.png` |
 | Saved screenshots | `$HOME/Pictures/` | `capture-1739698252000000000.png` |
-| Config directory | `$XDG_CONFIG_HOME/chalkak/` (fallback: `$HOME/.config/chalkak/`) | `theme.json`, `keybindings.json` |
+| Config directory | `$XDG_CONFIG_HOME/jjaeng/` (fallback: `$HOME/.config/jjaeng/`) | `theme.json`, `keybindings.json` |
 
-ChalKak creates these directories automatically when needed.
+Jjaeng creates these directories automatically when needed.
 
-**Temp file cleanup:** ChalKak removes per-capture temp files when you close or delete a preview. It also prunes stale `capture_*.png` files (older than 24 hours) at startup.
+**Temp file cleanup:** Jjaeng removes per-capture temp files when you close or delete a preview. It also prunes stale `capture_*.png` files (older than 24 hours) at startup.
 
 ---
 
 ## 12. Clipboard Behavior
 
-When you copy from ChalKak (Preview `c` or Editor `Ctrl+C`), the clipboard receives multiple formats so different apps can pick the best one:
+When you copy from Jjaeng (Preview `c` or Editor `Ctrl+C`), the clipboard receives multiple formats so different apps can pick the best one:
 
 | Format | Content | Used by |
 |--------|---------|---------|
@@ -498,15 +498,15 @@ Print → select region → o (OCR) → copied to clipboard
 Print → select region → c (copy) → paste into Claude Code / Codex CLI
 ```
 
-Many coding agents accept clipboard images directly. ChalKak copies PNG bytes to the clipboard, so paste works without saving to a file first.
+Many coding agents accept clipboard images directly. Jjaeng copies PNG bytes to the clipboard, so paste works without saving to a file first.
 
 ---
 
 ## 14. Configuration
 
-ChalKak works without any configuration files. All settings below are optional overrides.
+Jjaeng works without any configuration files. All settings below are optional overrides.
 
-**Config directory:** `$XDG_CONFIG_HOME/chalkak/` (default: `~/.config/chalkak/`)
+**Config directory:** `$XDG_CONFIG_HOME/jjaeng/` (default: `~/.config/jjaeng/`)
 
 ### 14.1 `theme.json`
 
@@ -520,7 +520,7 @@ Controls theme mode, UI colors, and editor defaults.
 }
 ```
 
-`mode` values: `system`, `light`, `dark`. When set to `system`, ChalKak follows your desktop theme preference, falling back to dark mode if detection fails.
+`mode` values: `system`, `light`, `dark`. When set to `system`, Jjaeng follows your desktop theme preference, falling back to dark mode if detection fails.
 
 **Full example** with `common` defaults and per-mode overrides:
 
@@ -616,12 +616,12 @@ Overrides editor navigation defaults. If this file is missing, built-in defaults
 - Key name aliases are normalized: `ctrl`/`control`, `cmd`/`command`/`win` → `super`, `option` → `alt`.
 - Each shortcut chord must have exactly one non-modifier key (e.g., `ctrl+plus`).
 - Shortcut arrays must not be empty.
-- If parsing fails, ChalKak logs a warning and falls back to defaults.
+- If parsing fails, Jjaeng logs a warning and falls back to defaults.
 
 **Validate after editing:**
 
 ```bash
-jq empty "${XDG_CONFIG_HOME:-$HOME/.config}/chalkak/keybindings.json"
+jq empty "${XDG_CONFIG_HOME:-$HOME/.config}/jjaeng/keybindings.json"
 ```
 
 ### 14.3 `config.json`
@@ -636,7 +636,7 @@ Application-level settings. If this file is missing, built-in defaults are used.
 
 #### `ocr_language`
 
-Overrides the OCR recognition language. If omitted, ChalKak auto-detects from the system `LANG` environment variable.
+Overrides the OCR recognition language. If omitted, Jjaeng auto-detects from the system `LANG` environment variable.
 
 | Value | Language |
 |-------|----------|
@@ -662,7 +662,7 @@ Overrides the OCR recognition language. If omitted, ChalKak auto-detects from th
 |-------|-----|
 | Missing dependency | Run the verification command from [Section 2](#2-requirements) |
 | Not in Hyprland session | Ensure `HYPRLAND_INSTANCE_SIGNATURE` is set: `echo $HYPRLAND_INSTANCE_SIGNATURE` |
-| slurp selection cancelled | Retry with `chalkak --region` and complete the selection |
+| slurp selection cancelled | Retry with `jjaeng --region` and complete the selection |
 
 ### Clipboard copy fails
 
@@ -682,14 +682,14 @@ Overrides the OCR recognition language. If omitted, ChalKak auto-detects from th
 
 | Check | Fix |
 |-------|-----|
-| "Model files not found" toast | Install `chalkak-ocr-models` package, or place model files in `~/.local/share/chalkak/models/` |
+| "Model files not found" toast | Install `jjaeng-ocr-models` package, or place model files in `~/.local/share/jjaeng/models/` |
 | Wrong language recognized | Set `ocr_language` in `config.json` ([Section 14.3](#143-configjson)) or check system `LANG` |
 | "No text found" on valid text | Try a larger selection area; very small or low-contrast text may not be detected |
 
 ### Temp files accumulate
 
-ChalKak cleans up temp files automatically on close/delete and prunes stale files at startup. If files still accumulate:
+Jjaeng cleans up temp files automatically on close/delete and prunes stale files at startup. If files still accumulate:
 
-1. Ensure `XDG_RUNTIME_DIR` is set (avoids `/tmp/chalkak/` fallback).
+1. Ensure `XDG_RUNTIME_DIR` is set (avoids `/tmp/jjaeng/` fallback).
 2. Close previews/editors normally instead of force-killing.
-3. Manual cleanup: `rm $XDG_RUNTIME_DIR/capture_*.png` (or `/tmp/chalkak/capture_*.png`).
+3. Manual cleanup: `rm $XDG_RUNTIME_DIR/capture_*.png` (or `/tmp/jjaeng/capture_*.png`).

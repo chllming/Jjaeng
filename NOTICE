@@ -1,0 +1,19 @@
+Jjaeng is a derivative work of ChalKak.
+
+Upstream project:
+- Name: ChalKak
+- Repository: https://github.com/BitYoungjae/ChalKak
+- Original author: BitYoungjae and contributors
+
+This repository preserves the upstream dual-license model:
+- Apache-2.0, see LICENSE-APACHE
+- MIT, see LICENSE-MIT
+
+Original copyright notices are retained. Additional modifications in this
+repository are copyright (c) 2026 Jjaeng contributors.
+
+The current Jjaeng refactor introduces a workspace split with these crates:
+- crates/jjaeng-core
+- crates/jjaeng-daemon
+- crates/jjaeng-ui
+- crates/jjaeng-cli

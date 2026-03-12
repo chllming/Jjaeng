@@ -1,0 +1,16 @@
+[package]
+name = "jjaeng-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "CLI frontend for Jjaeng"
+repository = "https://github.com/chllming/Jjaeng"
+homepage = "https://github.com/chllming/Jjaeng"
+
+[[bin]]
+name = "jjaeng"
+path = "src/main.rs"
+
+[dependencies]
+jjaeng-core = { path = "../jjaeng-core" }
+jjaeng-ui = { path = "../jjaeng-ui" }

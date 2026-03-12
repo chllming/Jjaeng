@@ -1,15 +1,19 @@
-[package]
-name = "chalkak"
-version = "0.5.2"
-edition = "2021"
-description = "Hyprland screenshot preview and editor utility"
-repository = "https://github.com/BitYoungjae/ChalKak"
-homepage = "https://github.com/BitYoungjae/ChalKak"
-license = "MIT OR Apache-2.0"
-authors = ["BitYoungjae <bityoungjae@gmail.com>"]
+[workspace]
+members = [
+  "crates/jjaeng-core",
+  "crates/jjaeng-ui",
+  "crates/jjaeng-daemon",
+  "crates/jjaeng-cli",
+]
+default-members = ["crates/jjaeng-cli"]
+resolver = "2"
 
-[dependencies]
-anyhow = "1.0"
+[workspace.package]
+version = "0.6.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
 gtk4 = "0.10.3"
 image = "0.25.9"
 serde = { version = "1.0", features = ["derive"] }
@@ -19,6 +23,4 @@ ocr-rs = { git = "https://github.com/BitYoungjae/rust-paddle-ocr.git", branch = 
 notify-rust = "4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-
-[build-dependencies]
 glib-build-tools = "0.21"
