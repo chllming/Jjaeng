@@ -40,10 +40,10 @@ pub const LAYOUT_TOKENS: StyleTokens = StyleTokens {
     control_size: 40,
     icon_size: 18,
     border_width: 1,
-    preview_default_width: 420,
-    preview_default_height: 236,
-    preview_min_width: 420,
-    preview_min_height: 236,
+    preview_default_width: 210,
+    preview_default_height: 118,
+    preview_min_width: 210,
+    preview_min_height: 118,
     editor_initial_width: 1280,
     editor_initial_height: 800,
     editor_min_width: 750,
@@ -66,10 +66,10 @@ mod tests {
     #[test]
     fn layout_tokens_match_component_spec_dimensions() {
         let tokens = LAYOUT_TOKENS;
-        assert_eq!(tokens.preview_min_width, 420);
-        assert_eq!(tokens.preview_min_height, 236);
-        assert_eq!(tokens.preview_default_width, 420);
-        assert_eq!(tokens.preview_default_height, 236);
+        assert_eq!(tokens.preview_min_width, 210);
+        assert_eq!(tokens.preview_min_height, 118);
+        assert_eq!(tokens.preview_default_width, 210);
+        assert_eq!(tokens.preview_default_height, 118);
         assert_eq!(tokens.editor_initial_width, 1280);
         assert_eq!(tokens.editor_initial_height, 800);
         assert_eq!(tokens.editor_min_width, 750);

@@ -471,11 +471,15 @@ fn run_command_output_internal(
     let mut process = Command::new(command);
     process
         .args(args)
+        .stdin(if stdin_payload.is_some() {
+            Stdio::piped()
+        } else {
+            // `slurp` treats stdin as a source of predefined selections. Keep
+            // region capture detached from any inherited launcher input.
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    if stdin_payload.is_some() {
-        process.stdin(Stdio::piped());
-    }
 
     let mut child = process.spawn().map_err(|err| CaptureError::CommandIo {
         command: command.to_string(),
@@ -911,5 +915,26 @@ mod tests {
         let err =
             parse_region_selection("oops").expect_err("invalid geometry should produce an error");
         assert!(matches!(err, CaptureError::InvalidSelection { message: _ }));
+    }
+
+    #[test]
+    fn run_command_output_without_payload_uses_null_stdin() {
+        let stdin_target = run_command_output("bash", &["-lc", "readlink /proc/self/fd/0"])
+            .expect("command should resolve stdin target");
+
+        assert_eq!(stdin_target.trim(), "/dev/null");
+    }
+
+    #[test]
+    fn run_command_output_with_payload_uses_piped_stdin() {
+        let output = run_command_output_with_stdin(
+            "bash",
+            &["-lc", "printf '%s|' \"$(readlink /proc/self/fd/0)\"; cat"],
+            "payload",
+        )
+        .expect("command should read piped stdin");
+
+        assert!(output.starts_with("pipe:["));
+        assert!(output.ends_with("|payload"));
     }
 }
