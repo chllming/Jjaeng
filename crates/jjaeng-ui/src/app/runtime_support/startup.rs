@@ -43,6 +43,7 @@ impl StartupConfig {
             print_status_json: false,
         };
         let mut recording_request: Option<RecordingRequest> = None;
+        let mut recording_prompt = false;
 
         for arg in args {
             match arg.as_ref() {
@@ -63,21 +64,46 @@ impl StartupConfig {
                         &app_config,
                         RecordingTarget::Fullscreen,
                     ));
+                    recording_prompt = false;
                 }
                 "--record-region" => {
                     recording_request = Some(default_recording_request(
                         &app_config,
                         RecordingTarget::Region,
                     ));
+                    recording_prompt = false;
                 }
                 "--record-window" => {
                     recording_request = Some(default_recording_request(
                         &app_config,
                         RecordingTarget::Window,
                     ));
+                    recording_prompt = false;
+                }
+                "--record-full-prompt" => {
+                    recording_request = Some(default_recording_request(
+                        &app_config,
+                        RecordingTarget::Fullscreen,
+                    ));
+                    recording_prompt = true;
+                }
+                "--record-region-prompt" => {
+                    recording_request = Some(default_recording_request(
+                        &app_config,
+                        RecordingTarget::Region,
+                    ));
+                    recording_prompt = true;
+                }
+                "--record-window-prompt" => {
+                    recording_request = Some(default_recording_request(
+                        &app_config,
+                        RecordingTarget::Window,
+                    ));
+                    recording_prompt = true;
                 }
                 "--stop-recording" => {
                     recording_request = None;
+                    recording_prompt = false;
                     config.remote_command = Some(RemoteCommand::StopRecording);
                 }
                 "--launchpad" => {
@@ -143,7 +169,11 @@ impl StartupConfig {
         }
 
         if let Some(request) = recording_request {
-            config.remote_command = Some(RemoteCommand::StartRecording(request));
+            config.remote_command = Some(if recording_prompt {
+                RemoteCommand::PromptRecording(request)
+            } else {
+                RemoteCommand::StartRecording(request)
+            });
         }
 
         config
@@ -270,6 +300,15 @@ mod tests {
         assert_eq!(request.options.size, RecordingSize::Half);
         assert_eq!(request.options.encoding, RecordingEncodingPreset::SmallFile);
         assert_eq!(request.options.audio.mode, AudioMode::Desktop);
+    }
+
+    #[test]
+    fn startup_config_parses_recording_prompt_request() {
+        let config = StartupConfig::from_iter(["--record-region-prompt"]);
+        let Some(RemoteCommand::PromptRecording(request)) = config.remote_command else {
+            panic!("expected recording prompt request");
+        };
+        assert_eq!(request.target, RecordingTarget::Region);
     }
 
     #[test]

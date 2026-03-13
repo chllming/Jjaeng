@@ -465,6 +465,90 @@ button.launchpad-danger-button:active {{
   border-color: rgba(255, 80, 80, 0.34);
 }}
 
+/* ── Recording prompt ── */
+window.recording-selection-window,
+window.recording-prompt-window {{
+  background: transparent;
+}}
+frame.recording-selection-frame {{
+  border-radius: 0;
+  border: {history_border_width}px solid {focus_ring_color};
+  background: alpha({canvas_background}, 0.04);
+  box-shadow: 0 0 0 1px alpha({text_color}, 0.20);
+}}
+frame.recording-selection-frame > border {{
+  border: none;
+}}
+box.recording-prompt-surface {{
+  border-radius: 0;
+  border: {history_border_width}px solid alpha({text_color}, 0.82);
+  background: alpha({canvas_background}, {history_surface_alpha:.2});
+  box-shadow: none;
+}}
+.recording-prompt-surface,
+.recording-prompt-surface label,
+.recording-prompt-surface button,
+.recording-prompt-surface entry,
+.recording-prompt-surface combobox {{
+  font-family: {history_font_family};
+  color: {text_color};
+}}
+label.recording-prompt-title {{
+  font-size: {history_base_font_size}px;
+  font-weight: 700;
+}}
+label.recording-prompt-timer {{
+  font-size: {history_meta_font_size}px;
+  font-weight: 700;
+  opacity: 0.92;
+}}
+label.recording-prompt-meta,
+label.recording-prompt-control-label {{
+  font-size: {history_meta_font_size}px;
+  opacity: 0.82;
+}}
+label.recording-prompt-status,
+label.recording-prompt-hint {{
+  font-size: {history_meta_font_size}px;
+  opacity: 0.82;
+}}
+box.recording-prompt-controls,
+box.recording-prompt-mic-row {{
+  min-height: 32px;
+}}
+box.recording-prompt-controls combobox,
+box.recording-prompt-mic-row combobox {{
+  min-width: 120px;
+}}
+button.recording-prompt-button {{
+  min-height: 32px;
+  border-radius: 0;
+}}
+button.recording-prompt-button-primary {{
+  background-image: linear-gradient(
+                      rgba(0, 0, 0, 0.20),
+                      rgba(0, 0, 0, 0.20)
+                    ),
+                    {accent_gradient};
+  color: {accent_text_color};
+  border-color: transparent;
+  font-weight: 600;
+}}
+button.recording-prompt-button-primary:hover,
+button.recording-prompt-button-primary:active {{
+  color: {accent_text_color};
+}}
+button.recording-prompt-button-danger {{
+  background: rgba(255, 80, 80, 0.08);
+  color: rgba(255, 80, 80, 0.92);
+  border-color: rgba(255, 80, 80, 0.22);
+}}
+button.recording-prompt-button-danger:hover,
+button.recording-prompt-button-danger:active {{
+  color: rgba(255, 65, 65, 1.0);
+  border-color: rgba(255, 80, 80, 0.34);
+}}
+
 /* ── History window ── */
 window.history-window {{
   background: transparent;

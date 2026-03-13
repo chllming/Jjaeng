@@ -16,7 +16,7 @@ use jjaeng_core::identity::{APP_CSS_ROOT, APP_ID, APP_NAME};
 use jjaeng_core::input::ShortcutAction;
 use jjaeng_core::preview::PreviewAction;
 use jjaeng_core::recording::{
-    self, AudioMode, RecordingEncodingPreset, RecordingRequest, RecordingSize,
+    self, AudioMode, RecordingEncodingPreset, RecordingRequest, RecordingSelection, RecordingSize,
 };
 use jjaeng_core::service::{RemoteCommand, StatusSnapshot};
 use jjaeng_core::state::{AppEvent, AppState, StateMachine};
@@ -40,6 +40,7 @@ mod layout;
 mod lifecycle;
 mod ocr_support;
 mod preview_runtime;
+mod recording_prompt;
 mod runtime_css;
 mod runtime_support;
 mod window_state;
@@ -53,6 +54,7 @@ use self::launchpad::*;
 use self::launchpad_actions::*;
 use self::lifecycle::*;
 use self::preview_runtime::*;
+use self::recording_prompt::*;
 use self::runtime_support::*;
 pub use self::runtime_support::{StartupCaptureMode, StartupConfig};
 use self::window_state::*;
@@ -286,6 +288,38 @@ fn clear_editor_runtime_state(editor_runtime: &EditorRuntimeState) {
 struct ActiveRecording {
     handle: recording::RecordingHandle,
     timer_source_id: gtk4::glib::SourceId,
+    started_at: Instant,
+    paused_at: Option<Instant>,
+    paused_total_ms: u64,
+}
+
+impl ActiveRecording {
+    fn elapsed_ms(&self) -> u64 {
+        let paused_ms = self.paused_total_ms.saturating_add(
+            self.paused_at
+                .map(|paused_at| paused_at.elapsed().as_millis() as u64)
+                .unwrap_or(0),
+        );
+        (self.started_at.elapsed().as_millis() as u64).saturating_sub(paused_ms)
+    }
+
+    fn is_paused(&self) -> bool {
+        self.paused_at.is_some()
+    }
+
+    fn mark_paused(&mut self) {
+        if self.paused_at.is_none() {
+            self.paused_at = Some(Instant::now());
+        }
+    }
+
+    fn mark_resumed(&mut self) {
+        if let Some(paused_at) = self.paused_at.take() {
+            self.paused_total_ms = self
+                .paused_total_ms
+                .saturating_add(paused_at.elapsed().as_millis() as u64);
+        }
+    }
 }
 
 #[derive(Clone, Default)]
@@ -304,6 +338,13 @@ impl RecordingRuntimeState {
             .borrow()
             .as_ref()
             .map(|active| active.handle.recording_id.clone())
+    }
+
+    fn is_paused(&self) -> bool {
+        self.active
+            .borrow()
+            .as_ref()
+            .is_some_and(ActiveRecording::is_paused)
     }
 }
 
@@ -476,6 +517,7 @@ fn should_show_launchpad_for_remote_fallback(command: &RemoteCommand) -> bool {
         RemoteCommand::OpenHistory
             | RemoteCommand::ToggleHistory
             | RemoteCommand::StartRecording(_)
+            | RemoteCommand::PromptRecording(_)
             | RemoteCommand::StopRecording
     )
 }
@@ -490,15 +532,19 @@ fn is_history_remote_command(command: &RemoteCommand) -> bool {
 fn is_recording_remote_command(command: &RemoteCommand) -> bool {
     matches!(
         command,
-        RemoteCommand::StartRecording(_) | RemoteCommand::StopRecording
+        RemoteCommand::StartRecording(_)
+            | RemoteCommand::PromptRecording(_)
+            | RemoteCommand::StopRecording
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn dispatch_remote_command(
     launchpad_actions: &LaunchpadActionExecutor,
     open_history_window: &Rc<dyn Fn()>,
     toggle_history_window: &Rc<dyn Fn()>,
     start_recording: &Rc<dyn Fn(RecordingRequest)>,
+    prompt_recording: &Rc<dyn Fn(RecordingRequest)>,
     stop_recording: &Rc<dyn Fn()>,
     remote_command: RemoteCommand,
     render: &Rc<dyn Fn()>,
@@ -569,12 +615,16 @@ fn dispatch_remote_command(
         RemoteCommand::StartRecording(request) => {
             (start_recording.as_ref())(request);
         }
+        RemoteCommand::PromptRecording(request) => {
+            (prompt_recording.as_ref())(request);
+        }
         RemoteCommand::StopRecording => {
             (stop_recording.as_ref())();
         }
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn should_release_headless_startup_hold(
     hold_active: bool,
     startup_capture_completed: bool,
@@ -583,6 +633,7 @@ fn should_release_headless_startup_hold(
     preview_window_count: usize,
     editor_window_open: bool,
     recording_active: bool,
+    recording_prompt_open: bool,
 ) -> bool {
     hold_active
         && startup_capture_completed
@@ -591,6 +642,7 @@ fn should_release_headless_startup_hold(
         && preview_window_count == 0
         && !editor_window_open
         && !recording_active
+        && !recording_prompt_open
 }
 
 pub struct App {
@@ -855,6 +907,8 @@ impl App {
                 Rc::new(RefCell::new(None));
             let ocr_in_progress = Rc::new(Cell::new(false));
             let recording_runtime = RecordingRuntimeState::default();
+            let recording_prompt = Rc::new(RefCell::new(None::<RecordingPromptRuntime>));
+            let recording_flow_pending = Rc::new(Cell::new(false));
             let app_for_preview = app.clone();
             let app_for_lifecycle = app.clone();
             let preview_render_context = PreviewRenderContext::new(
@@ -941,6 +995,8 @@ impl App {
                 let history_render_context = history_render_context.clone();
                 let render_handle = render_handle.clone();
                 let recording_runtime = recording_runtime.clone();
+                let recording_prompt = recording_prompt.clone();
+                let recording_flow_pending = recording_flow_pending.clone();
 
                 Rc::new(move || {
                     let runtime = runtime_session.borrow();
@@ -989,6 +1045,15 @@ impl App {
                     let preview_window_count = preview_windows.borrow().len();
                     let editor_window_open = editor_window.borrow().is_some();
                     let recording_active = recording_runtime.is_active();
+                    let recording_paused = recording_runtime.is_paused();
+                    sync_recording_prompt(
+                        &recording_prompt,
+                        recording_active,
+                        recording_paused,
+                        recording_runtime.elapsed_ms.get(),
+                    );
+                    let recording_prompt_open =
+                        recording_flow_pending.get() || recording_prompt_open(&recording_prompt);
                     let status_snapshot = StatusSnapshot {
                         state: format!("{state:?}").to_ascii_lowercase(),
                         active_capture_id: active_capture
@@ -1016,6 +1081,7 @@ impl App {
                             preview_window_count,
                             editor_window_open,
                             recording_active,
+                            recording_prompt_open,
                         )
                     {
                         tracing::info!("releasing headless startup capture hold");
@@ -1061,12 +1127,231 @@ impl App {
                 ocr_language,
                 ocr_in_progress.clone(),
             );
+            let begin_recording: Rc<dyn Fn(RecordingRequest, Option<RecordingSelection>, bool)> = {
+                let machine = machine_for_activate.clone();
+                let status_log = status_log_for_activate.clone();
+                let recording_runtime = recording_runtime.clone();
+                let recording_prompt = recording_prompt.clone();
+                let recording_flow_pending = recording_flow_pending.clone();
+                let render_handle = render_handle.clone();
+                Rc::new(
+                    move |request: RecordingRequest,
+                          selection: Option<RecordingSelection>,
+                          preserve_prompt: bool| {
+                        if preserve_prompt {
+                            set_recording_prompt_starting(&recording_prompt);
+                        } else {
+                            dismiss_recording_prompt(&recording_prompt);
+                        }
+                        recording_flow_pending.set(true);
+
+                        if recording_runtime.is_active() {
+                            recording_flow_pending.set(false);
+                            *status_log.borrow_mut() = "recording already active".to_string();
+                            if preserve_prompt {
+                                set_recording_prompt_error(
+                                    &recording_prompt,
+                                    "Recording already active",
+                                );
+                            }
+                            if let Some(render) = render_handle.borrow().as_ref() {
+                                (render.as_ref())();
+                            }
+                            return;
+                        }
+                        if !matches!(machine.borrow().state(), AppState::Idle) {
+                            recording_flow_pending.set(false);
+                            *status_log.borrow_mut() =
+                                "recording can only start from idle state".to_string();
+                            if preserve_prompt {
+                                set_recording_prompt_error(
+                                    &recording_prompt,
+                                    "Recording can only start from idle",
+                                );
+                            }
+                            if let Some(render) = render_handle.borrow().as_ref() {
+                                (render.as_ref())();
+                            }
+                            return;
+                        }
+
+                        *status_log.borrow_mut() =
+                            format!("starting {:?} recording", request.target);
+                        if let Some(render) = render_handle.borrow().as_ref() {
+                            (render.as_ref())();
+                        }
+
+                        let machine = machine.clone();
+                        let status_log = status_log.clone();
+                        let recording_runtime = recording_runtime.clone();
+                        let recording_prompt = recording_prompt.clone();
+                        let recording_flow_pending = recording_flow_pending.clone();
+                        let render_handle = render_handle.clone();
+                        let target = request.target;
+                        spawn_worker_action(
+                            move || match selection.as_ref() {
+                                Some(selection) => {
+                                    recording::start_recording_selected(&request, selection)
+                                }
+                                None => recording::start_recording(&request),
+                            },
+                            move |result| {
+                                match result {
+                                    Ok(handle) => {
+                                        recording_flow_pending.set(false);
+                                        if let Err(err) =
+                                            machine.borrow_mut().transition(AppEvent::StartRecording)
+                                        {
+                                            *status_log.borrow_mut() =
+                                                format!("cannot enter recording state: {err}");
+                                            if preserve_prompt {
+                                                set_recording_prompt_error(
+                                                    &recording_prompt,
+                                                    "Failed to enter recording state",
+                                                );
+                                            }
+                                        } else {
+                                            recording_runtime.elapsed_ms.set(0);
+                                            let active_recording = recording_runtime.active.clone();
+                                            let elapsed_ms =
+                                                recording_runtime.elapsed_ms.clone();
+                                            let render =
+                                                render_handle.borrow().as_ref().cloned();
+                                            let timer_source_id = gtk4::glib::timeout_add_local(
+                                                Duration::from_millis(250),
+                                                move || {
+                                                    let active_slot = active_recording.borrow();
+                                                    let Some(active) = active_slot.as_ref() else {
+                                                        return gtk4::glib::ControlFlow::Break;
+                                                    };
+                                                    elapsed_ms.set(active.elapsed_ms());
+                                                    if let Some(render) = render.as_ref() {
+                                                        (render.as_ref())();
+                                                    }
+                                                    gtk4::glib::ControlFlow::Continue
+                                                },
+                                            );
+                                            recording_runtime.active.borrow_mut().replace(
+                                                ActiveRecording {
+                                                    handle,
+                                                    timer_source_id,
+                                                    started_at: Instant::now(),
+                                                    paused_at: None,
+                                                    paused_total_ms: 0,
+                                                },
+                                            );
+                                            *status_log.borrow_mut() =
+                                                format!("{target:?} recording active");
+                                            jjaeng_core::notification::send("Recording started");
+                                        }
+                                    }
+                                    Err(err) => {
+                                        recording_flow_pending.set(false);
+                                        *status_log.borrow_mut() =
+                                            format!("recording failed to start: {err}");
+                                        if preserve_prompt {
+                                            set_recording_prompt_error(
+                                                &recording_prompt,
+                                                &format!("Failed to start: {err}"),
+                                            );
+                                        }
+                                        jjaeng_core::notification::send(format!(
+                                            "Recording failed: {err}"
+                                        ));
+                                    }
+                                }
+                                if let Some(render) = render_handle.borrow().as_ref() {
+                                    (render.as_ref())();
+                                }
+                            },
+                        );
+                    },
+                )
+            };
+            let start_recording_selected_prompt: Rc<
+                dyn Fn(RecordingRequest, RecordingSelection),
+            > = {
+                let begin_recording = begin_recording.clone();
+                Rc::new(move |request, selection| {
+                    (begin_recording.as_ref())(request, Some(selection), true);
+                })
+            };
             let start_recording: Rc<dyn Fn(RecordingRequest)> = {
+                let begin_recording = begin_recording.clone();
+                Rc::new(move |request| {
+                    (begin_recording.as_ref())(request, None, false);
+                })
+            };
+            let pause_recording_toggle: Rc<dyn Fn()> = {
                 let machine = machine_for_activate.clone();
                 let status_log = status_log_for_activate.clone();
                 let recording_runtime = recording_runtime.clone();
                 let render_handle = render_handle.clone();
+                Rc::new(move || {
+                    if !matches!(machine.borrow().state(), AppState::Recording) {
+                        *status_log.borrow_mut() =
+                            "pause recording requires recording state".to_string();
+                        if let Some(render) = render_handle.borrow().as_ref() {
+                            (render.as_ref())();
+                        }
+                        return;
+                    }
+
+                    let mut active_slot = recording_runtime.active.borrow_mut();
+                    let Some(active) = active_slot.as_mut() else {
+                        *status_log.borrow_mut() = "no active recording".to_string();
+                        if let Some(render) = render_handle.borrow().as_ref() {
+                            (render.as_ref())();
+                        }
+                        return;
+                    };
+
+                    let result = if active.is_paused() {
+                        recording::resume_recording(&active.handle).map(|_| {
+                            active.mark_resumed();
+                            *status_log.borrow_mut() = "recording resumed".to_string();
+                            jjaeng_core::notification::send("Recording resumed");
+                        })
+                    } else {
+                        recording::pause_recording(&active.handle).map(|_| {
+                            active.mark_paused();
+                            *status_log.borrow_mut() = "recording paused".to_string();
+                            jjaeng_core::notification::send("Recording paused");
+                        })
+                    };
+
+                    match result {
+                        Ok(()) => {
+                            recording_runtime.elapsed_ms.set(active.elapsed_ms());
+                        }
+                        Err(err) => {
+                            *status_log.borrow_mut() =
+                                format!("recording pause toggle failed: {err}");
+                            jjaeng_core::notification::send(format!(
+                                "Recording control failed: {err}"
+                            ));
+                        }
+                    }
+
+                    if let Some(render) = render_handle.borrow().as_ref() {
+                        (render.as_ref())();
+                    }
+                })
+            };
+            let stop_recording_slot = Rc::new(RefCell::new(None::<Rc<dyn Fn()>>));
+            let prompt_recording: Rc<dyn Fn(RecordingRequest)> = {
+                let app = app_for_preview.clone();
+                let machine = machine_for_activate.clone();
+                let status_log = status_log_for_activate.clone();
+                let recording_runtime = recording_runtime.clone();
+                let recording_prompt = recording_prompt.clone();
+                let recording_flow_pending = recording_flow_pending.clone();
+                let render_handle = render_handle.clone();
+                let start_recording_selected_prompt = start_recording_selected_prompt.clone();
+                let pause_recording_toggle = pause_recording_toggle.clone();
+                let stop_recording_slot = stop_recording_slot.clone();
                 Rc::new(move |request: RecordingRequest| {
+                    tracing::debug!(target = ?request.target, "prompt recording requested");
                     if recording_runtime.is_active() {
                         *status_log.borrow_mut() = "recording already active".to_string();
                         if let Some(render) = render_handle.borrow().as_ref() {
@@ -1083,60 +1368,99 @@ impl App {
                         return;
                     }
 
-                    *status_log.borrow_mut() = format!("starting {:?} recording", request.target);
+                    dismiss_recording_prompt(&recording_prompt);
+                    recording_flow_pending.set(true);
+                    *status_log.borrow_mut() =
+                        format!("select {:?} recording area", request.target);
                     if let Some(render) = render_handle.borrow().as_ref() {
                         (render.as_ref())();
                     }
 
-                    let machine = machine.clone();
+                    let app = app.clone();
                     let status_log = status_log.clone();
-                    let recording_runtime = recording_runtime.clone();
+                    let recording_prompt = recording_prompt.clone();
+                    let recording_flow_pending = recording_flow_pending.clone();
                     let render_handle = render_handle.clone();
-                    let target = request.target;
+                    let start_recording_selected_prompt = start_recording_selected_prompt.clone();
+                    let pause_recording_toggle = pause_recording_toggle.clone();
+                    let stop_recording_slot = stop_recording_slot.clone();
                     spawn_worker_action(
-                        move || recording::start_recording(&request),
+                        move || recording::resolve_recording_selection(request.target),
                         move |result| {
                             match result {
-                                Ok(handle) => {
-                                    if let Err(err) =
-                                        machine.borrow_mut().transition(AppEvent::StartRecording)
-                                    {
-                                        *status_log.borrow_mut() =
-                                            format!("cannot enter recording state: {err}");
-                                    } else {
-                                        recording_runtime.elapsed_ms.set(0);
-                                        let elapsed_ms = recording_runtime.elapsed_ms.clone();
-                                        let render = render_handle.borrow().as_ref().cloned();
-                                        let started_at = Instant::now();
-                                        let timer_started_at = started_at;
-                                        let timer_source_id = gtk4::glib::timeout_add_local(
-                                            Duration::from_secs(1),
-                                            move || {
-                                                elapsed_ms
-                                                    .set(timer_started_at.elapsed().as_millis()
-                                                        as u64);
-                                                if let Some(render) = render.as_ref() {
-                                                    (render.as_ref())();
-                                                }
-                                                gtk4::glib::ControlFlow::Continue
-                                            },
-                                        );
-                                        recording_runtime.active.borrow_mut().replace(
-                                            ActiveRecording {
-                                                handle,
-                                                timer_source_id,
-                                            },
-                                        );
-                                        *status_log.borrow_mut() =
-                                            format!("{target:?} recording active");
-                                        jjaeng_core::notification::send("Recording started");
-                                    }
+                                Ok(selection) => {
+                                    tracing::debug!(
+                                        target = ?request.target,
+                                        selection = ?selection,
+                                        "recording selection resolved"
+                                    );
+                                    *status_log.borrow_mut() =
+                                        "review recording settings".to_string();
+                                    let microphone_sources =
+                                        recording::list_microphone_sources().unwrap_or_default();
+                                    let confirm: Rc<
+                                        dyn Fn(RecordingRequest, RecordingSelection),
+                                    > = {
+                                        let start_recording_selected_prompt =
+                                            start_recording_selected_prompt.clone();
+                                        Rc::new(move |request, selection| {
+                                            (start_recording_selected_prompt.as_ref())(
+                                                request,
+                                                selection,
+                                            );
+                                        })
+                                    };
+                                    let cancel: Rc<dyn Fn()> = {
+                                        let status_log = status_log.clone();
+                                        let recording_prompt = recording_prompt.clone();
+                                        let recording_flow_pending =
+                                            recording_flow_pending.clone();
+                                        let render_handle = render_handle.clone();
+                                        Rc::new(move || {
+                                            dismiss_recording_prompt(&recording_prompt);
+                                            recording_flow_pending.set(false);
+                                            *status_log.borrow_mut() =
+                                                "recording cancelled".to_string();
+                                            if let Some(render) = render_handle.borrow().as_ref() {
+                                                (render.as_ref())();
+                                            }
+                                        })
+                                    };
+                                    let stop: Rc<dyn Fn()> = {
+                                        let stop_recording_slot = stop_recording_slot.clone();
+                                        Rc::new(move || {
+                                            if let Some(stop_recording) =
+                                                stop_recording_slot.borrow().as_ref()
+                                            {
+                                                (stop_recording.as_ref())();
+                                            }
+                                        })
+                                    };
+                                    present_recording_prompt(
+                                        &app,
+                                        style_tokens,
+                                        &recording_prompt,
+                                        &request,
+                                        &selection,
+                                        &microphone_sources,
+                                        &confirm,
+                                        &cancel,
+                                        &pause_recording_toggle,
+                                        &stop,
+                                    );
+                                    recording_flow_pending.set(false);
                                 }
                                 Err(err) => {
+                                    tracing::debug!(
+                                        target = ?request.target,
+                                        ?err,
+                                        "recording selection failed"
+                                    );
+                                    recording_flow_pending.set(false);
                                     *status_log.borrow_mut() =
-                                        format!("recording failed to start: {err}");
+                                        format!("recording selection failed: {err}");
                                     jjaeng_core::notification::send(format!(
-                                        "Recording failed: {err}"
+                                        "Recording selection failed: {err}"
                                     ));
                                 }
                             }
@@ -1151,6 +1475,7 @@ impl App {
                 let machine = machine_for_activate.clone();
                 let status_log = status_log_for_activate.clone();
                 let recording_runtime = recording_runtime.clone();
+                let recording_prompt = recording_prompt.clone();
                 let history_service = history_service_for_activate.clone();
                 let storage_service = storage_service_for_activate.clone();
                 let render_handle = render_handle.clone();
@@ -1171,6 +1496,19 @@ impl App {
                         }
                         return;
                     };
+
+                    if active.is_paused() {
+                        if let Err(err) = recording::resume_recording(&active.handle) {
+                            *status_log.borrow_mut() =
+                                format!("recording stop failed: {err}");
+                            recording_runtime.active.borrow_mut().replace(active);
+                            if let Some(render) = render_handle.borrow().as_ref() {
+                                (render.as_ref())();
+                            }
+                            return;
+                        }
+                        active.mark_resumed();
+                    }
 
                     match recording::stop_recording(&mut active.handle) {
                         Ok(artifact) => {
@@ -1225,6 +1563,7 @@ impl App {
                                 );
                             }
                             recording_runtime.elapsed_ms.set(0);
+                            dismiss_recording_prompt(&recording_prompt);
                             let _ = std::fs::remove_file(&artifact.output_path);
                             let _ = std::fs::remove_file(&artifact.thumbnail_path);
                             jjaeng_core::notification::send("Recording stopped");
@@ -1243,6 +1582,9 @@ impl App {
                     }
                 })
             };
+            stop_recording_slot
+                .borrow_mut()
+                .replace(stop_recording.clone());
             connect_launchpad_default_buttons(
                 &launchpad,
                 &launchpad_actions,
@@ -1252,11 +1594,6 @@ impl App {
                 &render,
             );
 
-            {
-                let render = render.clone();
-                render();
-            }
-
             if daemon_mode {
                 jjaeng_core::service::spawn_command_server(remote_command_tx.clone());
                 let remote_command_rx = remote_command_rx.clone();
@@ -1264,6 +1601,7 @@ impl App {
                 let open_history_window = open_history_window.clone();
                 let toggle_history_window = toggle_history_window.clone();
                 let start_recording_for_remote = start_recording.clone();
+                let prompt_recording_for_remote = prompt_recording.clone();
                 let stop_recording_for_remote = stop_recording.clone();
                 let render = render.clone();
                 gtk4::glib::timeout_add_local(Duration::from_millis(40), move || {
@@ -1273,6 +1611,7 @@ impl App {
                             &open_history_window,
                             &toggle_history_window,
                             &start_recording_for_remote,
+                            &prompt_recording_for_remote,
                             &stop_recording_for_remote,
                             command,
                             &render,
@@ -1280,6 +1619,11 @@ impl App {
                     }
                     gtk4::glib::ControlFlow::Continue
                 });
+            }
+
+            if local_startup_remote_command.is_none() {
+                let render = render.clone();
+                render();
             }
 
             run_startup_capture(&launchpad_actions, startup_capture, {
@@ -1297,6 +1641,7 @@ impl App {
                     &open_history_window,
                     &toggle_history_window,
                     &start_recording,
+                    &prompt_recording,
                     &stop_recording,
                     command,
                     &render,
@@ -1313,7 +1658,7 @@ impl App {
             if show_launchpad {
                 window.present();
             } else {
-                window.close();
+                tracing::debug!("keeping hidden startup window available for async prompts");
             }
         });
 
@@ -1508,6 +1853,7 @@ mod tests {
             false,
             0,
             false,
+            false,
             false
         ));
 
@@ -1518,6 +1864,7 @@ mod tests {
             false,
             0,
             false,
+            false,
             false
         ));
         assert!(!should_release_headless_startup_hold(
@@ -1526,6 +1873,7 @@ mod tests {
             AppState::Idle,
             false,
             0,
+            false,
             false,
             false
         ));
@@ -1536,6 +1884,7 @@ mod tests {
             false,
             0,
             false,
+            false,
             false
         ));
         assert!(!should_release_headless_startup_hold(
@@ -1544,6 +1893,7 @@ mod tests {
             AppState::Idle,
             true,
             0,
+            false,
             false,
             false
         ));
@@ -1554,6 +1904,7 @@ mod tests {
             false,
             1,
             false,
+            false,
             false
         ));
         assert!(!should_release_headless_startup_hold(
@@ -1563,6 +1914,7 @@ mod tests {
             false,
             0,
             true,
+            false,
             false
         ));
         assert!(!should_release_headless_startup_hold(
@@ -1571,6 +1923,17 @@ mod tests {
             AppState::Idle,
             false,
             0,
+            false,
+            true,
+            false
+        ));
+        assert!(!should_release_headless_startup_hold(
+            true,
+            true,
+            AppState::Idle,
+            false,
+            0,
+            false,
             false,
             true
         ));

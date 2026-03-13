@@ -16,6 +16,7 @@ pub enum RemoteCommand {
     CaptureRegion,
     CaptureWindow,
     StartRecording(RecordingRequest),
+    PromptRecording(RecordingRequest),
     StopRecording,
     OpenHistory,
     ToggleHistory,

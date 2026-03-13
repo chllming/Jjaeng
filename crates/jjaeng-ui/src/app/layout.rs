@@ -170,6 +170,45 @@ pub(super) fn centered_window_geometry_for_point(
     (x, y, width, height)
 }
 
+pub(super) fn bottom_centered_window_geometry_for_point(
+    anchor_x: i32,
+    anchor_y: i32,
+    window_geometry: RuntimeWindowGeometry,
+    margin: i32,
+) -> (i32, i32, i32, i32) {
+    let width = window_geometry.width.max(1);
+    let height = window_geometry.height.max(1);
+    let bounds = monitor_bounds_for_point(anchor_x, anchor_y).unwrap_or(preview::PreviewBounds {
+        x: anchor_x.saturating_sub(width / 2),
+        y: anchor_y.saturating_sub(height / 2),
+        width,
+        height,
+    });
+    bottom_centered_window_geometry(bounds, window_geometry, margin)
+}
+
+fn bottom_centered_window_geometry(
+    bounds: preview::PreviewBounds,
+    window_geometry: RuntimeWindowGeometry,
+    margin: i32,
+) -> (i32, i32, i32, i32) {
+    let width = window_geometry.width.max(1);
+    let height = window_geometry.height.max(1);
+    let margin = margin.max(0);
+
+    let x = if bounds.width > width {
+        bounds.x.saturating_add((bounds.width - width) / 2)
+    } else {
+        bounds.x
+    };
+    let y = bounds
+        .y
+        .saturating_add(bounds.height.saturating_sub(height).saturating_sub(margin))
+        .max(bounds.y);
+
+    (x, y, width, height)
+}
+
 pub(super) fn compute_initial_preview_placement(
     artifact: &capture::CaptureArtifact,
     style_tokens: StyleTokens,
@@ -261,5 +300,21 @@ mod tests {
             geometry,
             RuntimeWindowGeometry::with_position(24, 24, 252, 152)
         );
+    }
+
+    #[test]
+    fn bottom_centered_window_geometry_anchors_near_bottom_center() {
+        let geometry = bottom_centered_window_geometry(
+            preview::PreviewBounds {
+                x: 0,
+                y: 0,
+                width: 1920,
+                height: 1080,
+            },
+            RuntimeWindowGeometry::new(520, 176),
+            24,
+        );
+
+        assert_eq!(geometry, (700, 880, 520, 176));
     }
 }

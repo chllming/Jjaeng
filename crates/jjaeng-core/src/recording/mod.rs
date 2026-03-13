@@ -57,6 +57,11 @@ pub struct AudioConfig {
     pub microphone_device: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AudioSource {
+    pub name: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct RecordingAdvancedOverrides {
     #[serde(default)]
@@ -131,6 +136,40 @@ pub struct RecordGeometry {
     pub height: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RecordingSelection {
+    Fullscreen {
+        monitor_name: String,
+        geometry: RecordGeometry,
+    },
+    Region {
+        geometry_string: String,
+        geometry: RecordGeometry,
+    },
+    Window {
+        geometry_string: String,
+        geometry: RecordGeometry,
+    },
+}
+
+impl RecordingSelection {
+    pub fn target(&self) -> RecordingTarget {
+        match self {
+            Self::Fullscreen { .. } => RecordingTarget::Fullscreen,
+            Self::Region { .. } => RecordingTarget::Region,
+            Self::Window { .. } => RecordingTarget::Window,
+        }
+    }
+
+    pub fn geometry(&self) -> RecordGeometry {
+        match self {
+            Self::Fullscreen { geometry, .. }
+            | Self::Region { geometry, .. }
+            | Self::Window { geometry, .. } => *geometry,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct RecordingHandle {
     pub child: Child,
@@ -168,6 +207,12 @@ pub enum RecordError {
     CommandFailed { command: String, message: String },
     #[error("failed to stop recorder process")]
     StopFailed {
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("failed to send recorder signal {signal}")]
+    SignalFailed {
+        signal: String,
         #[source]
         source: std::io::Error,
     },
@@ -244,66 +289,162 @@ pub fn start_recording(request: &RecordingRequest) -> Result<RecordingHandle, Re
     start_recording_with(&SystemRecordBackend, request)
 }
 
+pub fn start_recording_selected(
+    request: &RecordingRequest,
+    selection: &RecordingSelection,
+) -> Result<RecordingHandle, RecordError> {
+    start_recording_with_selection(&SystemRecordBackend, request, selection)
+}
+
 pub fn stop_recording(handle: &mut RecordingHandle) -> Result<RecordArtifact, RecordError> {
     stop_recording_with(handle)
 }
 
-pub fn start_recording_with<B: RecordBackend>(
-    backend: &B,
-    request: &RecordingRequest,
-) -> Result<RecordingHandle, RecordError> {
-    let started_at = now_millis()?;
-    let recording_id = format!("recording-{}", started_at.saturating_mul(1_000_000));
+pub fn pause_recording(handle: &RecordingHandle) -> Result<(), RecordError> {
+    send_recording_signal(handle, "-STOP")
+}
 
-    match request.target {
+pub fn resume_recording(handle: &RecordingHandle) -> Result<(), RecordError> {
+    send_recording_signal(handle, "-CONT")
+}
+
+pub fn list_microphone_sources() -> Result<Vec<AudioSource>, RecordError> {
+    let output = Command::new("pactl")
+        .args(["list", "short", "sources"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .map_err(|source| RecordError::SpawnFailed {
+            command: "pactl".to_string(),
+            source,
+        })?;
+    if !output.status.success() {
+        return Err(RecordError::CommandFailed {
+            command: "pactl".to_string(),
+            message: format!("exit status {:?}", output.status.code()),
+        });
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(parse_pactl_source)
+        .filter(|source| !source.name.contains(".monitor"))
+        .collect())
+}
+
+pub fn default_microphone_source() -> Option<String> {
+    let output = Command::new("pactl")
+        .arg("get-default-source")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let source = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    (!source.is_empty() && !source.contains(".monitor")).then_some(source)
+}
+
+pub fn resolve_recording_selection(
+    target: RecordingTarget,
+) -> Result<RecordingSelection, RecordError> {
+    match target {
         RecordingTarget::Fullscreen => {
             let monitor = capture::focused_monitor_target()?;
-            let resolved_options =
-                resolve_recording_options(&request.options, monitor.width, monitor.height)?;
-            let output_path =
-                create_temp_recording(&recording_id, &resolved_options.container_extension);
-            let child =
-                backend.start_fullscreen(monitor.name.as_str(), &output_path, &resolved_options)?;
-            Ok(RecordingHandle {
-                child,
-                recording_id,
-                output_path,
-                started_at,
+            Ok(RecordingSelection::Fullscreen {
+                monitor_name: monitor.name,
                 geometry: RecordGeometry {
                     x: monitor.x,
                     y: monitor.y,
                     width: monitor.width,
                     height: monitor.height,
                 },
+            })
+        }
+        RecordingTarget::Region => {
+            let geometry_string = capture::select_region_geometry()?;
+            let geometry = parse_geometry(&geometry_string)?;
+            Ok(RecordingSelection::Region {
+                geometry_string,
+                geometry,
+            })
+        }
+        RecordingTarget::Window => {
+            let geometry_string = capture::select_window_geometry()?;
+            let geometry = parse_geometry(&geometry_string)?;
+            Ok(RecordingSelection::Window {
+                geometry_string,
+                geometry,
+            })
+        }
+    }
+}
+
+pub fn start_recording_with<B: RecordBackend>(
+    backend: &B,
+    request: &RecordingRequest,
+) -> Result<RecordingHandle, RecordError> {
+    let selection = resolve_recording_selection(request.target)?;
+    start_recording_with_selection(backend, request, &selection)
+}
+
+pub fn start_recording_with_selection<B: RecordBackend>(
+    backend: &B,
+    request: &RecordingRequest,
+    selection: &RecordingSelection,
+) -> Result<RecordingHandle, RecordError> {
+    let started_at = now_millis()?;
+    let recording_id = format!("recording-{}", started_at.saturating_mul(1_000_000));
+
+    match selection {
+        RecordingSelection::Fullscreen {
+            monitor_name,
+            geometry,
+        } => {
+            let resolved_options =
+                resolve_recording_options(&request.options, geometry.width, geometry.height)?;
+            let output_path =
+                create_temp_recording(&recording_id, &resolved_options.container_extension);
+            let child =
+                backend.start_fullscreen(monitor_name.as_str(), &output_path, &resolved_options)?;
+            Ok(RecordingHandle {
+                child,
+                recording_id,
+                output_path,
+                started_at,
+                geometry: *geometry,
                 options: request.options.clone(),
             })
         }
-        RecordingTarget::Region | RecordingTarget::Window => {
-            let geometry = match request.target {
-                RecordingTarget::Region => capture::select_region_geometry()?,
-                RecordingTarget::Window => capture::select_window_geometry()?,
-                RecordingTarget::Fullscreen => unreachable!(),
-            };
-            let parsed = parse_geometry(&geometry)?;
+        RecordingSelection::Region {
+            geometry_string,
+            geometry,
+        }
+        | RecordingSelection::Window {
+            geometry_string,
+            geometry,
+        } => {
             let resolved_options =
-                resolve_recording_options(&request.options, parsed.width, parsed.height)?;
+                resolve_recording_options(&request.options, geometry.width, geometry.height)?;
             let output_path =
                 create_temp_recording(&recording_id, &resolved_options.container_extension);
-            let child = match request.target {
-                RecordingTarget::Region => {
-                    backend.start_region(&geometry, &output_path, &resolved_options)?
+            let child = match selection {
+                RecordingSelection::Region { .. } => {
+                    backend.start_region(geometry_string, &output_path, &resolved_options)?
                 }
-                RecordingTarget::Window => {
-                    backend.start_window(&geometry, &output_path, &resolved_options)?
+                RecordingSelection::Window { .. } => {
+                    backend.start_window(geometry_string, &output_path, &resolved_options)?
                 }
-                RecordingTarget::Fullscreen => unreachable!(),
+                RecordingSelection::Fullscreen { .. } => unreachable!(),
             };
             Ok(RecordingHandle {
                 child,
                 recording_id,
                 output_path,
                 started_at,
-                geometry: parsed,
+                geometry: *geometry,
                 options: request.options.clone(),
             })
         }
@@ -386,6 +527,25 @@ fn base_record_command(output: &Path, options: &ResolvedRecordingOptions) -> Com
     command.stdout(Stdio::null());
     command.stderr(Stdio::null());
     command
+}
+
+fn send_recording_signal(handle: &RecordingHandle, signal: &str) -> Result<(), RecordError> {
+    let pid = handle.child.id().to_string();
+    let status = Command::new("kill")
+        .args([signal, pid.as_str()])
+        .status()
+        .map_err(|source| RecordError::SignalFailed {
+            signal: signal.to_string(),
+            source,
+        })?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(RecordError::CommandFailed {
+            command: format!("kill {signal}"),
+            message: format!("exit status {:?}", status.code()),
+        })
+    }
 }
 
 fn spawn_record_command(mut command: Command) -> Result<Child, RecordError> {
@@ -503,6 +663,16 @@ fn scale_resolution(
         RecordingSize::Fit1080p => fit_box(source_width, source_height, 1920, 1080),
         RecordingSize::Fit720p => fit_box(source_width, source_height, 1280, 720),
     }
+}
+
+fn parse_pactl_source(line: &str) -> Option<AudioSource> {
+    let mut columns = line.split_whitespace();
+    let _index = columns.next()?;
+    let name = columns.next()?.trim().to_string();
+    if name.is_empty() {
+        return None;
+    }
+    Some(AudioSource { name })
 }
 
 fn fit_box(

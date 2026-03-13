@@ -57,6 +57,9 @@ Options:
   --record-full                 Start fullscreen recording
   --record-region               Start region recording
   --record-window               Start window recording
+  --record-full-prompt          Select/confirm fullscreen recording with controls
+  --record-region-prompt        Select/confirm region recording with controls
+  --record-window-prompt        Select/confirm window recording with controls
   --stop-recording              Stop the active recording
   --record-size=<preset>        Recording size: native|half|1080p|720p
   --record-encoding=<preset>    Recording preset: standard|quality|small
