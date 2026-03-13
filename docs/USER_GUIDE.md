@@ -38,7 +38,7 @@ If you are setting up Jjaeng for the first time:
 2. Set up Hyprland keybindings ([Section 10](#10-hyprland-keybinding-setup)).
 3. Reload Hyprland: `hyprctl reload`
 4. Press `Print` to capture a region. The preview window opens automatically.
-5. In Preview: `s` to save, `c` to copy, `e` to open the editor.
+5. In Preview: `s` to save, `c` to copy, `e` or `double-click` to open the editor.
 
 That's it. The recommended workflow is keybinding-driven — bind capture commands to hotkeys and trigger them directly. Everything else in this guide is optional.
 
@@ -117,14 +117,14 @@ cargo build --release -p jjaeng-cli
 
 ```bash
 jjaeng --version
-# Expected: Jjaeng 0.5.0 (abc1234)
+# Expected: Jjaeng 0.6.0
 ```
 
 ---
 
 ## 4. Capture Modes
 
-Jjaeng supports three capture modes and a launchpad mode:
+Jjaeng supports screenshot capture modes, recording modes, and a launchpad mode:
 
 | Flag | Short form | Behavior |
 |------|------------|----------|
@@ -143,6 +143,20 @@ jjaeng --launchpad     # Launchpad UI (primarily for development)
 jjaeng --version       # Print version and exit
 jjaeng --help          # Print usage and exit
 ```
+
+Recording commands follow the same pattern:
+
+```bash
+jjaeng --record-full
+jjaeng --record-region
+jjaeng --record-window
+jjaeng --record-full-prompt
+jjaeng --record-region-prompt
+jjaeng --record-window-prompt
+jjaeng --stop-recording
+```
+
+`--record-*-prompt` opens the recording prompt first so you can confirm size, encoding, and audio settings before capture starts. Plain `--record-*` uses the current defaults immediately.
 
 The recommended approach is to bind these commands to Hyprland hotkeys ([Section 10](#10-hyprland-keybinding-setup)) and trigger captures directly from the keyboard. The `--launchpad` mode provides a button-based UI but is mainly intended for development and testing.
 
@@ -166,6 +180,8 @@ graph LR
 3. **Editor** — annotate with arrows, rectangles, text, blur, and more.
 4. **Output** — save to file or copy to clipboard.
 
+To revisit prior captures, use `jjaeng --toggle-history` or `jjaeng --open-history`. The history window shows both screenshots and recordings, and double-clicking a screenshot thumbnail opens it in the editor.
+
 ---
 
 ## 6. Preview
@@ -184,6 +200,12 @@ Preview is a confirmation step before saving or editing.
 | `Esc` | Close preview |
 
 Preview is a useful safety gate: verify the capture content before committing to save or edit.
+
+### Mouse Interactions
+
+- Single-click the preview to focus it and keep preview shortcuts active on that window.
+- Double-click the preview image to open the editor for that capture.
+- Preview windows open as compact surfaces near the lower-left edge of the active monitor so they stay out of the way of the main workspace.
 
 ---
 
@@ -521,6 +543,8 @@ Controls theme mode, UI colors, and editor defaults.
 ```
 
 `mode` values: `system`, `light`, `dark`. When set to `system`, Jjaeng follows your desktop theme preference, falling back to dark mode if detection fails.
+
+If Omarchy is installed, Jjaeng loads the active Omarchy palette and menu style as its base runtime theme. `theme.json` overrides are applied on top of that base, so you only need to specify values you want to change.
 
 **Full example** with `common` defaults and per-mode overrides:
 
