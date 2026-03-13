@@ -1,7 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use image::{Rgba, RgbaImage};
 use serde::{Deserialize, Serialize};
@@ -12,8 +13,10 @@ use crate::storage::create_temp_recording;
 
 const DEFAULT_RECORDING_EXTENSION: &str = "mp4";
 const RECORDING_BACKEND_COMMAND: &str = "wl-screenrec";
+const FALLBACK_RECORDING_BACKEND_COMMAND: &str = "gpu-screen-recorder";
 const RECORDING_THUMBNAIL_WIDTH: u32 = 320;
 const RECORDING_THUMBNAIL_HEIGHT: u32 = 180;
+const RECORDING_STARTUP_GRACE_PERIOD_MS: u64 = 250;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
@@ -123,6 +126,7 @@ impl RecordingRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedRecordingOptions {
+    pub encoding_preset: RecordingEncodingPreset,
     pub container_extension: String,
     pub encode_resolution: Option<String>,
     pub video_codec: Option<String>,
@@ -236,6 +240,8 @@ pub enum RecordError {
 }
 
 pub trait RecordBackend {
+    fn command_name(&self) -> &'static str;
+
     fn start_fullscreen(
         &self,
         monitor: &str,
@@ -261,7 +267,14 @@ pub trait RecordBackend {
 #[derive(Debug, Default)]
 pub struct SystemRecordBackend;
 
+#[derive(Debug, Default)]
+pub struct GpuScreenRecorderBackend;
+
 impl RecordBackend for SystemRecordBackend {
+    fn command_name(&self) -> &'static str {
+        RECORDING_BACKEND_COMMAND
+    }
+
     fn start_fullscreen(
         &self,
         monitor: &str,
@@ -294,23 +307,88 @@ impl RecordBackend for SystemRecordBackend {
     }
 }
 
+impl RecordBackend for GpuScreenRecorderBackend {
+    fn command_name(&self) -> &'static str {
+        FALLBACK_RECORDING_BACKEND_COMMAND
+    }
+
+    fn start_fullscreen(
+        &self,
+        monitor: &str,
+        output: &Path,
+        options: &ResolvedRecordingOptions,
+    ) -> Result<Child, RecordError> {
+        let mut command = base_gpu_record_command(output, options);
+        command.arg("-w").arg(monitor);
+        spawn_record_command(command)
+    }
+
+    fn start_region(
+        &self,
+        geometry: &str,
+        output: &Path,
+        options: &ResolvedRecordingOptions,
+    ) -> Result<Child, RecordError> {
+        let mut command = base_gpu_record_command(output, options);
+        command.arg("-w").arg("region");
+        command.arg("-region").arg(format_gsr_region(geometry)?);
+        spawn_record_command(command)
+    }
+
+    fn start_window(
+        &self,
+        geometry: &str,
+        output: &Path,
+        options: &ResolvedRecordingOptions,
+    ) -> Result<Child, RecordError> {
+        self.start_region(geometry, output, options)
+    }
+}
+
 pub fn recording_backend_available() -> bool {
-    command_available(RECORDING_BACKEND_COMMAND)
+    preferred_record_backend_kind().is_some()
 }
 
 pub fn recording_backend_requirement_message() -> String {
-    format!("recording requires `{RECORDING_BACKEND_COMMAND}` to be installed")
+    format!(
+        "recording requires `{}` or `{}` to be installed",
+        FALLBACK_RECORDING_BACKEND_COMMAND, RECORDING_BACKEND_COMMAND
+    )
+}
+
+pub fn preferred_recording_backend_name() -> &'static str {
+    preferred_record_backend_kind()
+        .map(RecordBackendKind::command_name)
+        .unwrap_or(RECORDING_BACKEND_COMMAND)
 }
 
 pub fn start_recording(request: &RecordingRequest) -> Result<RecordingHandle, RecordError> {
-    start_recording_with(&SystemRecordBackend, request)
+    match preferred_record_backend_kind() {
+        Some(RecordBackendKind::GpuScreenRecorder) => {
+            start_recording_with(&GpuScreenRecorderBackend, request)
+        }
+        Some(RecordBackendKind::WlScreenrec) => start_recording_with(&SystemRecordBackend, request),
+        None => Err(RecordError::MissingDependency(
+            preferred_recording_backend_name().to_string(),
+        )),
+    }
 }
 
 pub fn start_recording_selected(
     request: &RecordingRequest,
     selection: &RecordingSelection,
 ) -> Result<RecordingHandle, RecordError> {
-    start_recording_with_selection(&SystemRecordBackend, request, selection)
+    match preferred_record_backend_kind() {
+        Some(RecordBackendKind::GpuScreenRecorder) => {
+            start_recording_with_selection(&GpuScreenRecorderBackend, request, selection)
+        }
+        Some(RecordBackendKind::WlScreenrec) => {
+            start_recording_with_selection(&SystemRecordBackend, request, selection)
+        }
+        None => Err(RecordError::MissingDependency(
+            preferred_recording_backend_name().to_string(),
+        )),
+    }
 }
 
 pub fn stop_recording(handle: &mut RecordingHandle) -> Result<RecordArtifact, RecordError> {
@@ -435,8 +513,9 @@ pub fn start_recording_with_selection<B: RecordBackend>(
                 resolve_recording_options(&request.options, geometry.width, geometry.height)?;
             let output_path =
                 create_temp_recording(&recording_id, &resolved_options.container_extension);
-            let child =
+            let mut child =
                 backend.start_fullscreen(monitor_name.as_str(), &output_path, &resolved_options)?;
+            ensure_child_started(backend.command_name(), &mut child)?;
             Ok(RecordingHandle {
                 child,
                 recording_id,
@@ -459,7 +538,7 @@ pub fn start_recording_with_selection<B: RecordBackend>(
                 resolve_recording_options(&request.options, geometry.width, geometry.height)?;
             let output_path =
                 create_temp_recording(&recording_id, &resolved_options.container_extension);
-            let child = match selection {
+            let mut child = match selection {
                 RecordingSelection::Region { .. } => {
                     backend.start_region(geometry_string, &output_path, &resolved_options)?
                 }
@@ -468,6 +547,7 @@ pub fn start_recording_with_selection<B: RecordBackend>(
                 }
                 RecordingSelection::Fullscreen { .. } => unreachable!(),
             };
+            ensure_child_started(backend.command_name(), &mut child)?;
             Ok(RecordingHandle {
                 child,
                 recording_id,
@@ -550,16 +630,52 @@ fn base_record_command(output: &Path, options: &ResolvedRecordingOptions) -> Com
     }
     if options.audio_enabled {
         command.arg("--audio");
+        if let Some(device) = options.audio_device.as_ref() {
+            command.arg("--audio-device").arg(device);
+        }
+        if let Some(codec) = options.audio_codec.as_ref() {
+            command.arg("--audio-codec").arg(codec);
+        }
+        if let Some(bitrate) = options.audio_bitrate.as_ref() {
+            command.arg("--audio-bitrate").arg(bitrate);
+        }
     }
-    if let Some(device) = options.audio_device.as_ref() {
-        command.arg("--audio-device").arg(device);
+    command.stdin(Stdio::null());
+    command.stdout(Stdio::null());
+    command.stderr(Stdio::null());
+    command
+}
+
+fn base_gpu_record_command(output: &Path, options: &ResolvedRecordingOptions) -> Command {
+    let mut command = Command::new(FALLBACK_RECORDING_BACKEND_COMMAND);
+    command.arg("-o").arg(output);
+    if let Some(size) = options.encode_resolution.as_ref() {
+        command.arg("-s").arg(size);
     }
-    if let Some(codec) = options.audio_codec.as_ref() {
-        command.arg("--audio-codec").arg(codec);
+    if let Some(fps) = options.max_fps {
+        command.arg("-f").arg(fps.to_string());
     }
-    if let Some(bitrate) = options.audio_bitrate.as_ref() {
-        command.arg("--audio-bitrate").arg(bitrate);
+    if options.audio_enabled {
+        if let Some(device) = options.audio_device.as_ref() {
+            command.arg("-a").arg(device);
+        }
+        if let Some(codec) = options.audio_codec.as_ref() {
+            command.arg("-ac").arg(codec);
+        }
+        if let Some(bitrate) = options.audio_bitrate.as_ref() {
+            let normalized = bitrate.replace(" kB", "").replace(" KB", "");
+            command.arg("-ab").arg(normalized);
+        }
     }
+    command
+        .arg("-q")
+        .arg(match options.encoding_preset {
+            RecordingEncodingPreset::Standard => "high",
+            RecordingEncodingPreset::HighQuality => "very_high",
+            RecordingEncodingPreset::SmallFile => "medium",
+        })
+        .arg("-fallback-cpu-encoding")
+        .arg("yes");
     command.stdin(Stdio::null());
     command.stdout(Stdio::null());
     command.stderr(Stdio::null());
@@ -592,6 +708,17 @@ fn spawn_record_command(mut command: Command) -> Result<Child, RecordError> {
     })
 }
 
+fn ensure_child_started(command: &'static str, child: &mut Child) -> Result<(), RecordError> {
+    thread::sleep(Duration::from_millis(RECORDING_STARTUP_GRACE_PERIOD_MS));
+    match child.try_wait().map_err(RecordError::OutputMissing)? {
+        Some(status) => Err(RecordError::CommandFailed {
+            command: command.to_string(),
+            message: format!("recorder exited immediately with status {:?}", status.code()),
+        }),
+        None => Ok(()),
+    }
+}
+
 fn resolve_recording_options(
     options: &RecordingOptions,
     source_width: u32,
@@ -599,37 +726,40 @@ fn resolve_recording_options(
 ) -> Result<ResolvedRecordingOptions, RecordError> {
     let mut resolved = match options.encoding {
         RecordingEncodingPreset::Standard => ResolvedRecordingOptions {
+            encoding_preset: RecordingEncodingPreset::Standard,
             container_extension: DEFAULT_RECORDING_EXTENSION.to_string(),
             encode_resolution: scale_resolution(options.size, source_width, source_height)
                 .map(|(width, height)| format!("{width}x{height}")),
-            video_codec: Some("h264".to_string()),
-            video_bitrate: Some("12M".to_string()),
+            video_codec: Some("avc".to_string()),
+            video_bitrate: Some("12 MB".to_string()),
             audio_codec: Some("aac".to_string()),
-            audio_bitrate: Some("160k".to_string()),
+            audio_bitrate: Some("20 kB".to_string()),
             max_fps: Some(60),
             audio_enabled: !matches!(options.audio.mode, AudioMode::Off),
             audio_device: None,
         },
         RecordingEncodingPreset::HighQuality => ResolvedRecordingOptions {
+            encoding_preset: RecordingEncodingPreset::HighQuality,
             container_extension: DEFAULT_RECORDING_EXTENSION.to_string(),
             encode_resolution: scale_resolution(options.size, source_width, source_height)
                 .map(|(width, height)| format!("{width}x{height}")),
-            video_codec: Some("h264".to_string()),
-            video_bitrate: Some("24M".to_string()),
+            video_codec: Some("avc".to_string()),
+            video_bitrate: Some("24 MB".to_string()),
             audio_codec: Some("aac".to_string()),
-            audio_bitrate: Some("192k".to_string()),
+            audio_bitrate: Some("24 kB".to_string()),
             max_fps: Some(60),
             audio_enabled: !matches!(options.audio.mode, AudioMode::Off),
             audio_device: None,
         },
         RecordingEncodingPreset::SmallFile => ResolvedRecordingOptions {
+            encoding_preset: RecordingEncodingPreset::SmallFile,
             container_extension: DEFAULT_RECORDING_EXTENSION.to_string(),
             encode_resolution: scale_resolution(options.size, source_width, source_height)
                 .map(|(width, height)| format!("{width}x{height}")),
-            video_codec: Some("h264".to_string()),
-            video_bitrate: Some("6M".to_string()),
+            video_codec: Some("avc".to_string()),
+            video_bitrate: Some("6 MB".to_string()),
             audio_codec: Some("aac".to_string()),
-            audio_bitrate: Some("128k".to_string()),
+            audio_bitrate: Some("16 kB".to_string()),
             max_fps: Some(30),
             audio_enabled: !matches!(options.audio.mode, AudioMode::Off),
             audio_device: None,
@@ -698,10 +828,43 @@ fn normalize_extension(value: &str) -> String {
     }
 }
 
+fn format_gsr_region(geometry: &str) -> Result<String, RecordError> {
+    let parsed = parse_geometry(geometry)?;
+    Ok(format!(
+        "{}x{}+{}+{}",
+        parsed.width, parsed.height, parsed.x, parsed.y
+    ))
+}
+
 fn normalized_audio_mode(mode: AudioMode) -> AudioMode {
     match mode {
         AudioMode::Both => AudioMode::Desktop,
         other => other,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RecordBackendKind {
+    GpuScreenRecorder,
+    WlScreenrec,
+}
+
+impl RecordBackendKind {
+    const fn command_name(self) -> &'static str {
+        match self {
+            Self::GpuScreenRecorder => FALLBACK_RECORDING_BACKEND_COMMAND,
+            Self::WlScreenrec => RECORDING_BACKEND_COMMAND,
+        }
+    }
+}
+
+fn preferred_record_backend_kind() -> Option<RecordBackendKind> {
+    if command_available(FALLBACK_RECORDING_BACKEND_COMMAND) {
+        Some(RecordBackendKind::GpuScreenRecorder)
+    } else if command_available(RECORDING_BACKEND_COMMAND) {
+        Some(RecordBackendKind::WlScreenrec)
+    } else {
+        None
     }
 }
 
@@ -986,6 +1149,7 @@ mod tests {
         )
         .expect("both audio should normalize");
         assert!(resolved.audio_enabled);
+        assert_eq!(resolved.video_codec.as_deref(), Some("avc"));
         assert_eq!(
             resolved.audio_device,
             Some("alsa_output.default.monitor".to_string())

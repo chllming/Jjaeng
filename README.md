@@ -34,6 +34,8 @@ The name "Jjaeng" is a nod to something vivid, sharp, and bright, while the proj
 - `grim`
 - `slurp`
 - `wl-clipboard`
+- `gpu-screen-recorder` or `wl-screenrec` for video recording
+- `pactl` for recording audio source discovery
 - GTK4 runtime libraries
 
 ## Install
@@ -93,6 +95,8 @@ jjaeng --stop-recording
 
 `--record-*-prompt` opens the compact recording bar before capture starts so you can pick scale, quality, and either a system-audio source or microphone source. Plain `--record-*` starts immediately with current defaults, then keeps the same live HUD on screen for timer, pause, and stop.
 
+Jjaeng uses whichever supported recorder backend is available, preferring `gpu-screen-recorder` and falling back to `wl-screenrec`. Finished recordings are written into history immediately, and the result window `Save` action copies the video into `~/Videos/` by default.
+
 History and follow-up actions:
 
 ```bash
@@ -128,6 +132,7 @@ Primary files:
 Notable setting:
 
 - `screenshot_dir`: overrides the default output folder (default: `$HOME/Pictures`)
+- `recording_dir`: overrides the default video save folder (default: `$HOME/Videos`)
 
 ## Development
 

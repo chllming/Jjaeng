@@ -57,6 +57,8 @@ That's it. The recommended workflow is keybinding-driven — bind capture comman
 | `grim` | grim | Screen capture |
 | `slurp` | slurp | Region / window selection |
 | `wl-copy` | wl-clipboard | Clipboard operations |
+| `gpu-screen-recorder` or `wl-screenrec` | gpu-screen-recorder / wl-screenrec | Video recording backend |
+| `pactl` | pulseaudio / pipewire-pulse | Recording audio source discovery |
 
 **Environment variables:**
 
@@ -75,7 +77,7 @@ That's it. The recommended workflow is keybinding-driven — bind capture comman
 **Verify everything at once:**
 
 ```bash
-hyprctl version && grim -h && slurp -h && wl-copy --help && echo "All dependencies OK"
+hyprctl version && grim -h && slurp -h && wl-copy --help && pactl info >/dev/null && (command -v gpu-screen-recorder >/dev/null || command -v wl-screenrec >/dev/null) && echo "All dependencies OK"
 ```
 
 ---
@@ -163,6 +165,8 @@ The recording bar uses icon controls: target buttons, separate system-audio and 
 
 At the moment Jjaeng exposes system audio and microphone as separate controls, but only one audio path can be active at a time with the current recording backend.
 
+Jjaeng uses whichever supported recording backend is available, preferring `gpu-screen-recorder` and falling back to `wl-screenrec`.
+
 During an active recording, the same bar stays visible and shows the live elapsed time. When you stop, Jjaeng opens a recording result window with a thumbnail plus `Save`, `Copy Path`, `Open`, and `Close` actions for the finished video.
 
 The recommended approach is to bind these commands to Hyprland hotkeys ([Section 10](#10-hyprland-keybinding-setup)) and trigger captures directly from the keyboard. The `--launchpad` mode provides a button-based UI but is mainly intended for development and testing.
@@ -196,7 +200,7 @@ graph LR
 
 To revisit prior captures, use `jjaeng --toggle-history` or `jjaeng --open-history`. The history window shows both screenshots and recordings, and double-clicking a screenshot thumbnail opens it in the editor.
 
-Recordings are also written to history, so if you close the result window you can still reopen the video from history later.
+Recordings are persisted into history first, so if you close the result window you can still reopen the video from history later. The `Save` action copies the video into your configured recording directory, which defaults to `~/Videos/`.
 
 ---
 
@@ -231,8 +235,8 @@ The result actions are shown as lightweight icon controls, but they map to the s
 
 | Action | Behavior |
 |--------|----------|
-| `Save` | Copies the recording into the configured video output directory |
-| `Copy Path` | Copies the current video file path to the clipboard |
+| `Save` | Copies the recording into the configured video output directory (`~/Videos/` by default) |
+| `Copy Path` | Copies the current video file path to the clipboard, usually the history copy until you save elsewhere |
 | `Open` | Opens the recording in the system default video player |
 | `Close` | Dismisses the result window and leaves the recording in history |
 
@@ -487,13 +491,15 @@ If you use Omarchy, ensure `source = ~/.config/hypr/jjaeng.conf` is loaded withi
 |------|------|---------|
 | Temp captures | `$XDG_RUNTIME_DIR/` (fallback: `/tmp/jjaeng/`) | `capture_<id>.png` |
 | Temp recordings | `$XDG_RUNTIME_DIR/` (fallback: `/tmp/jjaeng/`) | `recording_<id>.mp4` |
+| Recording history videos | `$XDG_STATE_HOME/jjaeng/history/videos/` (fallback: `$HOME/.local/state/jjaeng/history/videos/`) | `recording-1739698252000000000.mp4` |
+| Recording thumbnails | `$XDG_CACHE_HOME/jjaeng/thumbnails/` (fallback: `$HOME/.cache/jjaeng/thumbnails/`) | `recording-1739698252000000000.png` |
 | Saved screenshots | `$HOME/Pictures/` | `capture-1739698252000000000.png` |
-| Saved recordings | `$HOME/Videos/jjaeng/` | `recording-1739698252000000000.mp4` |
+| Saved recordings | `$HOME/Videos/` | `recording-1739698252000000000.mp4` |
 | Config directory | `$XDG_CONFIG_HOME/jjaeng/` (fallback: `$HOME/.config/jjaeng/`) | `theme.json`, `keybindings.json` |
 
 Jjaeng creates these directories automatically when needed.
 
-**Temp file cleanup:** Jjaeng removes screenshot temp files when you close or delete a preview. Recordings are cleaned up after they are persisted, or kept long enough for the recording result window to finish `Save`, `Copy Path`, or `Open`. Jjaeng also prunes stale `capture_*.png` files (older than 24 hours) at startup.
+**Temp file cleanup:** Jjaeng removes screenshot temp files when you close or delete a preview. Recording temp files are cleaned up after the finished video is persisted into history, or kept long enough for the recording result window to finish `Save`, `Copy Path`, or `Open`. Jjaeng also prunes stale `capture_*.png` files (older than 24 hours) at startup.
 
 ---
 
@@ -695,7 +701,12 @@ Application-level settings. If this file is missing, built-in defaults are used.
 
 ```json
 {
-  "ocr_language": "korean"
+  "ocr_language": "korean",
+  "recording_dir": "/home/user/Videos",
+  "recording_target": "region",
+  "recording_size": "native",
+  "recording_encoding_preset": "standard",
+  "recording_audio_mode": "desktop"
 }
 ```
 
@@ -716,6 +727,20 @@ Overrides the OCR recognition language. If omitted, Jjaeng auto-detects from the
 | `devanagari` / `hi` | Devanagari script languages |
 | `ta` / `tamil` | Tamil |
 | `te` / `telugu` | Telugu |
+
+#### Recording defaults
+
+`config.json` can also store recording defaults:
+
+| Key | Purpose | Default |
+|-----|---------|---------|
+| `recording_dir` | Save location used by the recording result window `Save` action | `$HOME/Videos/` |
+| `recording_target` | Default target for direct-start recordings | `fullscreen` |
+| `recording_size` | Default scale preset | `native` |
+| `recording_encoding_preset` | Default quality preset | `standard` |
+| `recording_audio_mode` | Default audio input mode | `off` |
+| `recording_system_device` | Preferred system-audio source name | auto-detected |
+| `recording_mic_device` | Preferred microphone source name | auto-detected |
 
 ---
 
@@ -748,8 +773,17 @@ Overrides the OCR recognition language. If omitted, Jjaeng auto-detects from the
 | Check | Fix |
 |-------|-----|
 | Looking for a screenshot-style preview | Recordings open in a dedicated result window, not the screenshot preview |
+| Looking in `~/Videos` before pressing `Save` | Finished recordings are written to history first under `$XDG_STATE_HOME/jjaeng/history/videos/` (fallback: `~/.local/state/jjaeng/history/videos/`) |
 | Closed the result window immediately | Reopen the recording from `jjaeng --open-history` or `jjaeng --toggle-history` |
-| `~/Videos/jjaeng` missing | Check the recording output directory and permissions: `ls -ld ~/Videos ~/Videos/jjaeng` |
+| `~/Videos` missing | Check the recording output directory and permissions: `ls -ld ~/Videos` |
+
+### Recording does not start
+
+| Check | Fix |
+|-------|-----|
+| No supported recorder installed | Install `gpu-screen-recorder` or `wl-screenrec` |
+| Audio source dropdowns are empty | Ensure `pactl` works in your session: `pactl info` |
+| Recorder exits immediately | Try `gpu-screen-recorder` first on systems where `wl-screenrec` fails to negotiate a capture format |
 
 ### OCR not working
 

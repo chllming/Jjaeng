@@ -11,7 +11,7 @@ use thiserror::Error;
 const DEFAULT_TEMP_PREFIX: &str = "capture_";
 const DEFAULT_RECORDING_TEMP_PREFIX: &str = "recording_";
 const PREVIEW_SUBDIR: &str = "Pictures";
-const RECORDING_SUBDIR: &str = "Videos/jjaeng";
+const RECORDING_SUBDIR: &str = "Videos";
 #[derive(Debug, Error)]
 pub enum StorageError {
     #[error("missing HOME environment variable")]
@@ -344,6 +344,12 @@ mod tests {
             Some(PathBuf::from("/mnt/screenshots")),
         );
         assert_eq!(path, PathBuf::from("/mnt/screenshots"));
+    }
+
+    #[test]
+    fn resolve_videos_dir_defaults_to_home_videos() {
+        let path = resolve_videos_dir(Path::new("/home/test"), None);
+        assert_eq!(path, PathBuf::from("/home/test/Videos"));
     }
 
     #[test]

@@ -176,20 +176,20 @@ impl LaunchpadUi {
         recording_paused: bool,
         elapsed_ms: u64,
     ) {
+        let backend_label = if recording_available {
+            format!("{} ready", recording::preferred_recording_backend_name())
+        } else {
+            "recorder missing".to_string()
+        };
         let elapsed_label = if recording_active {
             format_recording_elapsed(elapsed_ms)
         } else {
             "00:00".to_string()
         };
-        self.recording_backend_label
-            .set_text(if recording_available {
-                "wl-screenrec ready"
-            } else {
-                "wl-screenrec missing"
-            });
+        self.recording_backend_label.set_text(&backend_label);
         self.recording_status_label
             .set_text(if !recording_available {
-                "Install wl-screenrec"
+                "Install a recorder"
             } else if recording_active {
                 if recording_paused {
                     "Paused"
@@ -563,16 +563,17 @@ pub(super) fn build_launchpad_ui(
         &["recording-bar-action", "recording-bar-stop"],
     );
 
-    let recording_backend_label = Label::new(Some(if recording_available {
-        "wl-screenrec ready"
+    let recording_backend_text = if recording_available {
+        format!("{} ready", recording::preferred_recording_backend_name())
     } else {
-        "wl-screenrec missing"
-    }));
+        "recorder missing".to_string()
+    };
+    let recording_backend_label = Label::new(Some(&recording_backend_text));
     recording_backend_label.add_css_class("recording-meta-chip");
     let recording_status_label = Label::new(Some(if recording_available {
         "Ready"
     } else {
-        "Install wl-screenrec"
+        "Install a recorder"
     }));
     recording_status_label.add_css_class("recording-meta-chip");
     let recording_timer_label = Label::new(Some("00:00"));
