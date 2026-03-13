@@ -4,12 +4,13 @@ English | [한국어](README.ko.md)
 
 Jjaeng is a Hyprland-first screenshot and recording tool for Wayland with a background daemon, compact bottom-left preview flow, screenshot/video history, Omarchy-aligned flat surfaces, and a built-in annotation editor.
 
-Jjaeng originates from [ChalKak](https://github.com/BitYoungjae/ChalKak). This repository keeps the upstream licensing model and includes attribution in [NOTICE](NOTICE).
+The name "Jjaeng" is a nod to something vivid, sharp, and bright, while the project itself grows out of the original [ChalKak](https://github.com/BitYoungjae/ChalKak). This repository keeps the upstream licensing model and includes attribution in [NOTICE](NOTICE).
 
 ## What It Does
 
 - Capture fullscreen, region, or a selected window.
 - Start fullscreen, region, or window recordings with prompt-driven size, encoding, and audio controls.
+- Keep a live elapsed timer while recording, then open a recording result window with `Save`, `Copy Path`, and `Open` actions when you stop.
 - Run as a background daemon (`jjaengd`) with socket-based control.
 - Show a compact preview with fast `Save` / `Copy` actions and `double-click` / `E` to jump into the editor.
 - Open a history surface with image/video thumbnails, quick copy/save, and edit entrypoints.

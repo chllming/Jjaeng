@@ -2,7 +2,7 @@
 
 [한국어 가이드](USER_GUIDE.ko.md)
 
-Jjaeng is a preview-first screenshot tool for Wayland + Hyprland. Capture, review, annotate, and share — all from the keyboard.
+Jjaeng is a preview-first screenshot and recording tool for Wayland + Hyprland. Capture, review, annotate, save, and share — all from the keyboard.
 
 ## Demo
 
@@ -39,6 +39,7 @@ If you are setting up Jjaeng for the first time:
 3. Reload Hyprland: `hyprctl reload`
 4. Press `Print` to capture a region. The preview window opens automatically.
 5. In Preview: `s` to save, `c` to copy, `e` or `double-click` to open the editor.
+6. For recordings, start `jjaeng --record-region-prompt`, watch the live timer, then stop and use the recording result window to `Save`, `Copy Path`, or `Open` the finished video.
 
 That's it. The recommended workflow is keybinding-driven — bind capture commands to hotkeys and trigger them directly. Everything else in this guide is optional.
 
@@ -158,6 +159,8 @@ jjaeng --stop-recording
 
 `--record-*-prompt` opens the recording prompt first so you can confirm size, encoding, and audio settings before capture starts. Plain `--record-*` uses the current defaults immediately.
 
+During an active recording, the prompt stays visible and shows the live elapsed time. When you stop, Jjaeng opens a recording result window with a thumbnail plus `Save`, `Copy Path`, `Open`, and `Close` actions for the finished video.
+
 The recommended approach is to bind these commands to Hyprland hotkeys ([Section 10](#10-hyprland-keybinding-setup)) and trigger captures directly from the keyboard. The `--launchpad` mode provides a button-based UI but is mainly intended for development and testing.
 
 `--version` and `--help` exit immediately without launching the GUI or requiring a display server.
@@ -168,19 +171,28 @@ If multiple capture flags are given, the last one wins.
 
 ## 5. Workflow Overview
 
-Jjaeng follows a **Capture → Preview → (optional) Edit → Output** flow:
+Jjaeng follows two main flows:
 
 ```mermaid
 graph LR
     A[Capture] --> B[Preview] --> C[Editor<br/>optional] --> D[Save<br/>or Copy]
 ```
 
+```mermaid
+graph LR
+    A[Record] --> B[Recording Prompt] --> C[Live Timer] --> D[Recording Result] --> E[Save / Copy Path / Open]
+```
+
 1. **Capture** — take a screenshot (region, window, or full screen).
 2. **Preview** — inspect the result. Decide whether to keep, discard, or edit.
 3. **Editor** — annotate with arrows, rectangles, text, blur, and more.
 4. **Output** — save to file or copy to clipboard.
+5. **Record** — start a screen recording with current defaults or from the prompt.
+6. **Recording Result** — stop the recording and use the result window to save, copy the video path, or open the finished file.
 
 To revisit prior captures, use `jjaeng --toggle-history` or `jjaeng --open-history`. The history window shows both screenshots and recordings, and double-clicking a screenshot thumbnail opens it in the editor.
+
+Recordings are also written to history, so if you close the result window you can still reopen the video from history later.
 
 ---
 
@@ -206,6 +218,19 @@ Preview is a useful safety gate: verify the capture content before committing to
 - Single-click the preview to focus it and keep preview shortcuts active on that window.
 - Double-click the preview image to open the editor for that capture.
 - Preview windows open as compact surfaces near the lower-left edge of the active monitor so they stay out of the way of the main workspace.
+
+### Recording Result Window
+
+When a recording stops successfully, Jjaeng opens a separate result window for the finished video.
+
+| Action | Behavior |
+|--------|----------|
+| `Save` | Copies the recording into the configured video output directory |
+| `Copy Path` | Copies the current video file path to the clipboard |
+| `Open` | Opens the recording in the system default video player |
+| `Close` | Dismisses the result window and leaves the recording in history |
+
+If the recording was already persisted automatically, the result window still opens so you can copy the path or open the file immediately.
 
 ---
 
@@ -455,12 +480,14 @@ If you use Omarchy, ensure `source = ~/.config/hypr/jjaeng.conf` is loaded withi
 | Type | Path | Example |
 |------|------|---------|
 | Temp captures | `$XDG_RUNTIME_DIR/` (fallback: `/tmp/jjaeng/`) | `capture_<id>.png` |
+| Temp recordings | `$XDG_RUNTIME_DIR/` (fallback: `/tmp/jjaeng/`) | `recording_<id>.mp4` |
 | Saved screenshots | `$HOME/Pictures/` | `capture-1739698252000000000.png` |
+| Saved recordings | `$HOME/Videos/jjaeng/` | `recording-1739698252000000000.mp4` |
 | Config directory | `$XDG_CONFIG_HOME/jjaeng/` (fallback: `$HOME/.config/jjaeng/`) | `theme.json`, `keybindings.json` |
 
 Jjaeng creates these directories automatically when needed.
 
-**Temp file cleanup:** Jjaeng removes per-capture temp files when you close or delete a preview. It also prunes stale `capture_*.png` files (older than 24 hours) at startup.
+**Temp file cleanup:** Jjaeng removes screenshot temp files when you close or delete a preview. Recordings are cleaned up after they are persisted, or kept long enough for the recording result window to finish `Save`, `Copy Path`, or `Open`. Jjaeng also prunes stale `capture_*.png` files (older than 24 hours) at startup.
 
 ---
 
@@ -521,6 +548,14 @@ Print → select region → c (copy) → paste into Claude Code / Codex CLI
 ```
 
 Many coding agents accept clipboard images directly. Jjaeng copies PNG bytes to the clipboard, so paste works without saving to a file first.
+
+### Record and hand off a clip
+
+```
+jjaeng --record-region-prompt → Start → Stop → Copy Path / Open
+```
+
+Use the prompt when you want to confirm encoding or audio settings first, then use the recording result window to hand off the video immediately after stop.
 
 ---
 
@@ -701,6 +736,14 @@ Overrides the OCR recognition language. If omitted, Jjaeng auto-detects from the
 |-------|-----|
 | `HOME` not set | Set `HOME` environment variable |
 | No write permission | Check permissions on `~/Pictures`: `ls -ld ~/Pictures` |
+
+### Recording finishes but no video is saved where expected
+
+| Check | Fix |
+|-------|-----|
+| Looking for a screenshot-style preview | Recordings open in a dedicated result window, not the screenshot preview |
+| Closed the result window immediately | Reopen the recording from `jjaeng --open-history` or `jjaeng --toggle-history` |
+| `~/Videos/jjaeng` missing | Check the recording output directory and permissions: `ls -ld ~/Videos ~/Videos/jjaeng` |
 
 ### OCR not working
 

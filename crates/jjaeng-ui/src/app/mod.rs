@@ -1,5 +1,6 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::process::Command;
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -8,6 +9,7 @@ use crate::ui::{install_lucide_icon_theme, StyleTokens};
 use gtk4::prelude::*;
 use gtk4::{Application, ApplicationWindow, Button};
 use jjaeng_core::capture;
+use jjaeng_core::clipboard::{ClipboardBackend, WlCopyBackend};
 use jjaeng_core::editor::tools::CropElement;
 use jjaeng_core::editor::{self, EditorAction, ToolKind};
 use jjaeng_core::error::AppResult;
@@ -41,6 +43,7 @@ mod lifecycle;
 mod ocr_support;
 mod preview_runtime;
 mod recording_prompt;
+mod recording_result;
 mod runtime_css;
 mod runtime_support;
 mod window_state;
@@ -55,6 +58,7 @@ use self::launchpad_actions::*;
 use self::lifecycle::*;
 use self::preview_runtime::*;
 use self::recording_prompt::*;
+use self::recording_result::*;
 use self::runtime_support::*;
 pub use self::runtime_support::{StartupCaptureMode, StartupConfig};
 use self::window_state::*;
@@ -634,6 +638,7 @@ fn should_release_headless_startup_hold(
     editor_window_open: bool,
     recording_active: bool,
     recording_prompt_open: bool,
+    recording_result_open: bool,
 ) -> bool {
     hold_active
         && startup_capture_completed
@@ -643,6 +648,7 @@ fn should_release_headless_startup_hold(
         && !editor_window_open
         && !recording_active
         && !recording_prompt_open
+        && !recording_result_open
 }
 
 fn should_restore_active_recording_on_stop_error(err: &recording::RecordError) -> bool {
@@ -910,6 +916,7 @@ impl App {
             let ocr_in_progress = Rc::new(Cell::new(false));
             let recording_runtime = RecordingRuntimeState::default();
             let recording_prompt = Rc::new(RefCell::new(None::<RecordingPromptRuntime>));
+            let recording_result = Rc::new(RefCell::new(None::<RecordingResultRuntime>));
             let recording_flow_pending = Rc::new(Cell::new(false));
             let app_for_preview = app.clone();
             let app_for_lifecycle = app.clone();
@@ -1009,6 +1016,7 @@ impl App {
                 let render_handle = render_handle.clone();
                 let recording_runtime = recording_runtime.clone();
                 let recording_prompt = recording_prompt.clone();
+                let recording_result = recording_result.clone();
                 let recording_flow_pending = recording_flow_pending.clone();
 
                 Rc::new(move || {
@@ -1077,6 +1085,8 @@ impl App {
                         recording_paused,
                         recording_runtime.elapsed_ms.get(),
                     );
+                    let recording_result_window_open =
+                        recording_result_open(&recording_result);
                     let recording_prompt_open =
                         recording_flow_pending.get() || recording_prompt_open(&recording_prompt);
                     let status_snapshot = StatusSnapshot {
@@ -1107,6 +1117,7 @@ impl App {
                             editor_window_open,
                             recording_active,
                             recording_prompt_open,
+                            recording_result_window_open,
                         )
                     {
                         tracing::info!("releasing headless startup capture hold");
@@ -1142,6 +1153,7 @@ impl App {
                 let status_log = status_log_for_activate.clone();
                 let recording_runtime = recording_runtime.clone();
                 let recording_prompt = recording_prompt.clone();
+                let recording_result = recording_result.clone();
                 let recording_flow_pending = recording_flow_pending.clone();
                 let render_handle = render_handle.clone();
                 Rc::new(
@@ -1191,6 +1203,7 @@ impl App {
                             return;
                         }
 
+                        dismiss_recording_result(&recording_result);
                         if preserve_prompt {
                             set_recording_prompt_starting(&recording_prompt);
                         } else {
@@ -1368,6 +1381,7 @@ impl App {
                 let status_log = status_log_for_activate.clone();
                 let recording_runtime = recording_runtime.clone();
                 let recording_prompt = recording_prompt.clone();
+                let recording_result = recording_result.clone();
                 let recording_flow_pending = recording_flow_pending.clone();
                 let render_handle = render_handle.clone();
                 let start_recording_selected_prompt = start_recording_selected_prompt.clone();
@@ -1401,6 +1415,7 @@ impl App {
                     }
 
                     dismiss_recording_prompt(&recording_prompt);
+                    dismiss_recording_result(&recording_result);
                     recording_flow_pending.set(true);
                     *status_log.borrow_mut() =
                         format!("select {:?} recording area", request.target);
@@ -1504,10 +1519,12 @@ impl App {
                 })
             };
             let stop_recording: Rc<dyn Fn()> = {
+                let app = app_for_preview.clone();
                 let machine = machine_for_activate.clone();
                 let status_log = status_log_for_activate.clone();
                 let recording_runtime = recording_runtime.clone();
                 let recording_prompt = recording_prompt.clone();
+                let recording_result = recording_result.clone();
                 let history_service = history_service_for_activate.clone();
                 let storage_service = storage_service_for_activate.clone();
                 let render_handle = render_handle.clone();
@@ -1545,11 +1562,15 @@ impl App {
                     match recording::stop_recording(&mut active.handle) {
                         Ok(artifact) => {
                             active.timer_source_id.remove();
-                            let mut persisted = false;
+                            recording_runtime.elapsed_ms.set(0);
+                            dismiss_recording_prompt(&recording_prompt);
+
+                            let mut history_entry = None;
+                            let mut direct_saved_path = None;
                             if let Some(history_service) = history_service.as_ref().as_ref() {
                                 match history_service.record_recording(&artifact) {
-                                    Ok(_) => {
-                                        persisted = true;
+                                    Ok(entry) => {
+                                        history_entry = Some(entry);
                                     }
                                     Err(err) => {
                                         tracing::warn!(
@@ -1560,15 +1581,11 @@ impl App {
                                     }
                                 }
                             }
-                            if !persisted {
+                            if history_entry.is_none() {
                                 if let Some(storage_service) = storage_service.as_ref().as_ref() {
                                     match storage_service.save_recording(&artifact) {
                                         Ok(saved_path) => {
-                                            persisted = true;
-                                            *status_log.borrow_mut() = format!(
-                                                "recording saved to {}",
-                                                saved_path.display()
-                                            );
+                                            direct_saved_path = Some(saved_path);
                                         }
                                         Err(err) => {
                                             tracing::warn!(
@@ -1580,6 +1597,35 @@ impl App {
                                     }
                                 }
                             }
+
+                            let mut result_output_path = artifact.output_path.clone();
+                            let mut result_thumbnail_path = artifact.thumbnail_path.clone();
+                            let mut result_saved_path = direct_saved_path.clone();
+                            let cleanup_output_on_close = false;
+                            let mut cleanup_thumbnail_on_close = false;
+                            let save_source_path = if let Some(entry) = history_entry.as_ref() {
+                                result_output_path = entry.media_path.clone();
+                                result_thumbnail_path = entry.thumbnail_path.clone();
+                                result_saved_path = entry.saved_path.clone();
+                                if artifact.output_path != entry.media_path {
+                                    let _ = std::fs::remove_file(&artifact.output_path);
+                                }
+                                if artifact.thumbnail_path != entry.thumbnail_path {
+                                    let _ = std::fs::remove_file(&artifact.thumbnail_path);
+                                }
+                                entry.media_path.clone()
+                            } else if let Some(saved_path) = direct_saved_path.as_ref() {
+                                result_output_path = saved_path.clone();
+                                if artifact.output_path != *saved_path {
+                                    let _ = std::fs::remove_file(&artifact.output_path);
+                                }
+                                cleanup_thumbnail_on_close = artifact.thumbnail_path.exists();
+                                artifact.output_path.clone()
+                            } else {
+                                artifact.output_path.clone()
+                            };
+
+                            let persisted = history_entry.is_some() || direct_saved_path.is_some();
                             if let Err(err) =
                                 machine.borrow_mut().transition(AppEvent::StopRecording)
                             {
@@ -1594,11 +1640,192 @@ impl App {
                                     artifact.output_path.display()
                                 );
                             }
-                            recording_runtime.elapsed_ms.set(0);
-                            dismiss_recording_prompt(&recording_prompt);
-                            if persisted {
-                                let _ = std::fs::remove_file(&artifact.output_path);
-                                let _ = std::fs::remove_file(&artifact.thumbnail_path);
+
+                            if result_output_path.exists() && result_thumbnail_path.exists() {
+                                let current_display_path = Rc::new(RefCell::new(
+                                    result_saved_path
+                                        .clone()
+                                        .unwrap_or_else(|| result_output_path.clone()),
+                                ));
+                                let can_save_from_temp =
+                                    save_source_path == artifact.output_path && artifact.output_path.exists();
+                                let temp_thumbnail_kept =
+                                    result_thumbnail_path == artifact.thumbnail_path
+                                        && artifact.thumbnail_path.exists();
+                                let recording_id = artifact.recording_id.clone();
+                                let on_save: Rc<dyn Fn()> = {
+                                    let status_log = status_log.clone();
+                                    let storage_service = storage_service.clone();
+                                    let history_service = history_service.clone();
+                                    let recording_result = recording_result.clone();
+                                    let render_handle = render_handle.clone();
+                                    let current_display_path = current_display_path.clone();
+                                    let save_source_path = save_source_path.clone();
+                                    let recording_id = recording_id.clone();
+                                    Rc::new(move || {
+                                        let Some(storage_service) =
+                                            storage_service.as_ref().as_ref()
+                                        else {
+                                            *status_log.borrow_mut() =
+                                                "storage service unavailable".to_string();
+                                            jjaeng_core::notification::send(
+                                                "Save failed: storage unavailable",
+                                            );
+                                            if let Some(render) = render_handle.borrow().as_ref() {
+                                                (render.as_ref())();
+                                            }
+                                            return;
+                                        };
+
+                                        let extension = save_source_path
+                                            .extension()
+                                            .and_then(|value| value.to_str())
+                                            .unwrap_or("mp4");
+                                        match storage_service.save_recording_path(
+                                            &recording_id,
+                                            &save_source_path,
+                                            extension,
+                                        ) {
+                                            Ok(saved_path) => {
+                                                if let Some(history_service) =
+                                                    history_service.as_ref().as_ref()
+                                                {
+                                                    if let Err(err) = history_service
+                                                        .mark_saved(&recording_id, &saved_path)
+                                                    {
+                                                        tracing::warn!(
+                                                            recording_id = %recording_id,
+                                                            ?err,
+                                                            "failed to update history entry saved path"
+                                                        );
+                                                    }
+                                                }
+                                                *current_display_path.borrow_mut() =
+                                                    saved_path.clone();
+                                                set_recording_result_saved_path(
+                                                    &recording_result,
+                                                    &saved_path,
+                                                    can_save_from_temp,
+                                                    temp_thumbnail_kept,
+                                                );
+                                                *status_log.borrow_mut() =
+                                                    format!("saved {recording_id}");
+                                                jjaeng_core::notification::send(format!(
+                                                    "Saved {recording_id}"
+                                                ));
+                                            }
+                                            Err(err) => {
+                                                *status_log.borrow_mut() = format!(
+                                                    "save failed for {recording_id}: {err}"
+                                                );
+                                                jjaeng_core::notification::send(format!(
+                                                    "Save failed: {err}"
+                                                ));
+                                            }
+                                        }
+
+                                        if let Some(render) = render_handle.borrow().as_ref() {
+                                            (render.as_ref())();
+                                        }
+                                    })
+                                };
+                                let on_copy: Rc<dyn Fn()> = {
+                                    let status_log = status_log.clone();
+                                    let render_handle = render_handle.clone();
+                                    let current_display_path = current_display_path.clone();
+                                    let recording_id = recording_id.clone();
+                                    Rc::new(move || {
+                                        let path = current_display_path.borrow().clone();
+                                        match WlCopyBackend.copy(&path) {
+                                            Ok(()) => {
+                                                *status_log.borrow_mut() =
+                                                    format!("copied {recording_id}");
+                                                jjaeng_core::notification::send(format!(
+                                                    "Copied {recording_id}"
+                                                ));
+                                            }
+                                            Err(err) => {
+                                                *status_log.borrow_mut() = format!(
+                                                    "copy failed for {recording_id}: {err}"
+                                                );
+                                                jjaeng_core::notification::send(format!(
+                                                    "Copy failed: {err}"
+                                                ));
+                                            }
+                                        }
+
+                                        if let Some(render) = render_handle.borrow().as_ref() {
+                                            (render.as_ref())();
+                                        }
+                                    })
+                                };
+                                let on_open: Rc<dyn Fn()> = {
+                                    let status_log = status_log.clone();
+                                    let render_handle = render_handle.clone();
+                                    let current_display_path = current_display_path.clone();
+                                    let recording_id = recording_id.clone();
+                                    Rc::new(move || {
+                                        let path = current_display_path.borrow().clone();
+                                        match Command::new("xdg-open").arg(&path).spawn() {
+                                            Ok(_) => {
+                                                *status_log.borrow_mut() =
+                                                    format!("opened {recording_id}");
+                                            }
+                                            Err(err) => {
+                                                *status_log.borrow_mut() = format!(
+                                                    "open failed for {recording_id}: {err}"
+                                                );
+                                                jjaeng_core::notification::send(format!(
+                                                    "Open failed: {err}"
+                                                ));
+                                            }
+                                        }
+
+                                        if let Some(render) = render_handle.borrow().as_ref() {
+                                            (render.as_ref())();
+                                        }
+                                    })
+                                };
+                                let on_close: Rc<dyn Fn()> = {
+                                    let recording_result = recording_result.clone();
+                                    let render_handle = render_handle.clone();
+                                    Rc::new(move || {
+                                        dismiss_recording_result(&recording_result);
+                                        if let Some(render) = render_handle.borrow().as_ref() {
+                                            (render.as_ref())();
+                                        }
+                                    })
+                                };
+                                let result_artifact = RecordingResultArtifact {
+                                    recording_id: artifact.recording_id.clone(),
+                                    output_path: result_output_path.clone(),
+                                    thumbnail_path: result_thumbnail_path.clone(),
+                                    width: artifact.width,
+                                    height: artifact.height,
+                                    duration_ms: artifact.duration_ms,
+                                    saved_path: result_saved_path.clone(),
+                                    cleanup_output_on_close,
+                                    cleanup_thumbnail_on_close,
+                                };
+                                present_recording_result(
+                                    &app,
+                                    style_tokens,
+                                    &recording_result,
+                                    &result_artifact,
+                                    &on_save,
+                                    &on_copy,
+                                    &on_open,
+                                    &on_close,
+                                );
+                                if persisted {
+                                    jjaeng_core::notification::send("Recording ready");
+                                } else {
+                                    jjaeng_core::notification::send(format!(
+                                        "Recording stopped; file kept at {}",
+                                        artifact.output_path.display()
+                                    ));
+                                }
+                            } else if persisted {
                                 jjaeng_core::notification::send("Recording stopped");
                             } else {
                                 jjaeng_core::notification::send(format!(
@@ -1941,6 +2168,7 @@ mod tests {
             0,
             false,
             false,
+            false,
             false
         ));
 
@@ -1952,6 +2180,7 @@ mod tests {
             0,
             false,
             false,
+            false,
             false
         ));
         assert!(!should_release_headless_startup_hold(
@@ -1960,6 +2189,7 @@ mod tests {
             AppState::Idle,
             false,
             0,
+            false,
             false,
             false,
             false
@@ -1972,6 +2202,7 @@ mod tests {
             0,
             false,
             false,
+            false,
             false
         ));
         assert!(!should_release_headless_startup_hold(
@@ -1980,6 +2211,7 @@ mod tests {
             AppState::Idle,
             true,
             0,
+            false,
             false,
             false,
             false
@@ -1992,15 +2224,6 @@ mod tests {
             1,
             false,
             false,
-            false
-        ));
-        assert!(!should_release_headless_startup_hold(
-            true,
-            true,
-            AppState::Idle,
-            false,
-            0,
-            true,
             false,
             false
         ));
@@ -2010,6 +2233,29 @@ mod tests {
             AppState::Idle,
             false,
             0,
+            true,
+            false,
+            false,
+            false
+        ));
+        assert!(!should_release_headless_startup_hold(
+            true,
+            true,
+            AppState::Idle,
+            false,
+            0,
+            false,
+            true,
+            false,
+            false
+        ));
+        assert!(!should_release_headless_startup_hold(
+            true,
+            true,
+            AppState::Idle,
+            false,
+            0,
+            false,
             false,
             true,
             false
@@ -2020,6 +2266,7 @@ mod tests {
             AppState::Idle,
             false,
             0,
+            false,
             false,
             false,
             true

@@ -154,6 +154,7 @@ window.floating-editor-window {{
 }}
 .launchpad-root button,
 .history-root button,
+.recording-result-surface button,
 .recording-prompt-surface button,
 button.preview-quick-action {{
   min-height: 32px;
@@ -170,6 +171,8 @@ button.preview-quick-action {{
 .launchpad-root button:active,
 .history-root button:hover,
 .history-root button:active,
+.recording-result-surface button:hover,
+.recording-result-surface button:active,
 .recording-prompt-surface button:hover,
 .recording-prompt-surface button:active,
 button.preview-quick-action:hover,
@@ -588,7 +591,8 @@ box.launchpad-recording-mic-row entry {{
 
 /* ── Recording prompt ── */
 window.recording-selection-window,
-window.recording-prompt-window {{
+window.recording-prompt-window,
+window.recording-result-window {{
   background: transparent;
 }}
 frame.recording-selection-frame {{
@@ -684,6 +688,43 @@ button.recording-prompt-button-danger:active {{
   background: rgba(255, 80, 80, 0.16);
   color: rgba(255, 65, 65, 1.0);
   border-color: rgba(255, 80, 80, 0.34);
+}}
+
+/* ── Recording result ── */
+box.recording-result-surface {{
+  border-radius: 0;
+  border: {history_border_width}px solid alpha({text_color}, 0.82);
+  background: alpha({canvas_background}, {history_surface_alpha:.2});
+  box-shadow: none;
+}}
+.recording-result-surface,
+.recording-result-surface label,
+.recording-result-surface button {{
+  font-family: {history_font_family};
+  color: {text_color};
+}}
+label.recording-result-title {{
+  font-size: {history_base_font_size}px;
+  font-weight: 700;
+}}
+label.recording-result-meta,
+label.recording-result-path {{
+  font-size: {history_meta_font_size}px;
+  opacity: 0.82;
+}}
+label.recording-result-path {{
+  min-height: 40px;
+}}
+frame.recording-result-thumbnail-frame {{
+  border-radius: 0;
+  border: {history_inner_border_width}px solid alpha({text_color}, 0.14);
+  background: alpha({canvas_background}, {history_tile_alpha:.2});
+}}
+frame.recording-result-thumbnail-frame > border {{
+  border: none;
+}}
+box.recording-result-button-row button.recording-prompt-button {{
+  min-width: 0;
 }}
 
 /* ── History window ── */
