@@ -49,6 +49,7 @@ impl ToastRuntime {
 #[derive(Clone)]
 pub(crate) struct PreviewWindowRuntime {
     pub(crate) window: ApplicationWindow,
+    pub(crate) selection_outline_window: Option<ApplicationWindow>,
     pub(crate) shell: Rc<RefCell<preview::PreviewWindowShell>>,
     pub(crate) preview_surface: Frame,
     pub(crate) controls: Revealer,
@@ -106,6 +107,9 @@ pub(crate) fn close_preview_window_for_capture(
         let mut window_state = runtime_window_state.borrow_mut();
         window_state.set_geometry(RuntimeWindowKind::Preview, resolved);
         window_state.set_preview_geometry_for_capture(capture_id, resolved);
+    }
+    if let Some(outline_window) = runtime.selection_outline_window {
+        outline_window.close();
     }
     guarded_close(&runtime.window, &runtime.close_guard);
 }

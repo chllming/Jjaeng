@@ -51,11 +51,26 @@ window.jjaeng-root {{
   background: transparent;
   color: {text_color};
 }}
-.jjaeng-root label {{
+.jjaeng-root,
+.jjaeng-root label,
+.jjaeng-root button,
+.jjaeng-root entry,
+.jjaeng-root text,
+.jjaeng-root combobox,
+.jjaeng-root dropdown,
+.jjaeng-root popover,
+.jjaeng-root scale {{
+  font-family: {history_font_family};
   color: {text_color};
 }}
 .jjaeng-root button {{
-  color: {text_color};
+  font-size: {history_button_font_size}px;
+}}
+.jjaeng-root entry,
+.jjaeng-root text,
+.jjaeng-root combobox,
+.jjaeng-root dropdown {{
+  font-size: {history_meta_font_size}px;
 }}
 .jjaeng-root button:hover,
 .jjaeng-root button:active {{
@@ -70,25 +85,55 @@ window.jjaeng-root {{
   color: inherit;
 }}
 tooltip {{
-  border-radius: {control_radius}px;
-  border: {border_width}px solid {border_color};
-  background: {panel_background};
+  border-radius: 0;
+  border: {history_border_width}px solid alpha({text_color}, 0.18);
+  background: alpha({canvas_background}, {history_surface_alpha:.2});
   color: {text_color};
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16),
-              0 1px 3px rgba(0, 0, 0, 0.10);
+  box-shadow: none;
+  font-family: {history_font_family};
 }}
 tooltip label {{
   color: {text_color};
+  font-family: {history_font_family};
+}}
+popover {{
+  border-radius: 0;
+  border: {history_border_width}px solid alpha({text_color}, 0.18);
+  background: alpha({canvas_background}, {history_surface_alpha:.2});
+  box-shadow: none;
+}}
+popover contents,
+popover listview,
+popover row,
+popover modelbutton {{
+  border-radius: 0;
+  background: transparent;
+  color: {text_color};
+  font-family: {history_font_family};
+}}
+popover row:hover,
+popover row:selected,
+popover modelbutton:hover,
+popover modelbutton:active {{
+  background: alpha({canvas_background}, {history_tile_alpha:.2});
+}}
+scrollbar slider {{
+  border-radius: 0;
+  border: {history_inner_border_width}px solid alpha({text_color}, 0.16);
+  background: alpha({canvas_background}, {history_tile_alpha:.2});
+  box-shadow: none;
+}}
+scrollbar slider:hover {{
+  border-color: {focus_ring_color};
 }}
 .preview-surface,
 .editor-surface {{
-  border-radius: {panel_radius}px;
-  border: {border_width}px solid {border_color};
-  background: {panel_background};
+  border-radius: 0;
+  border: {history_border_width}px solid alpha({text_color}, 0.82);
+  background: alpha({canvas_background}, {history_surface_alpha:.2});
   padding: 0;
   transition: opacity {motion_standard_ms}ms cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08),
-              0 12px 40px rgba(0, 0, 0, 0.12);
+  box-shadow: none;
 }}
 window.floating-preview-window,
 window.floating-editor-window {{
@@ -101,41 +146,83 @@ window.floating-editor-window {{
 .editor-toolbar,
 .editor-action-group,
 .preview-action-group {{
-  border-radius: {control_radius}px;
-  border: {border_width}px solid {border_color};
-  background: {panel_background};
+  border-radius: 0;
+  border: {history_border_width}px solid alpha({text_color}, 0.18);
+  background: alpha({canvas_background}, {history_surface_alpha:.2});
   padding: {spacing_4}px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14),
-              0 1px 3px rgba(0, 0, 0, 0.08),
-              inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: none;
 }}
-.icon-button {{
-  border-radius: {control_radius}px;
-  min-width: {control_size}px;
-  min-height: {control_size}px;
-  padding: 0;
-  border-color: transparent;
-  background: transparent;
+.launchpad-root button,
+.history-root button,
+.recording-prompt-surface button,
+button.preview-quick-action {{
+  min-height: 32px;
+  padding: 0 {spacing_12}px;
+  border-radius: 0;
+  border: {history_inner_border_width}px solid alpha({text_color}, 0.16);
+  background: alpha({canvas_background}, {history_surface_alpha:.2});
   box-shadow: none;
   transition: color {motion_hover_ms}ms cubic-bezier(0.4, 0, 0.2, 1),
               border-color {motion_hover_ms}ms cubic-bezier(0.4, 0, 0.2, 1),
-              box-shadow {motion_hover_ms}ms cubic-bezier(0.4, 0, 0.2, 1);
+              background {motion_hover_ms}ms cubic-bezier(0.4, 0, 0.2, 1);
+}}
+.launchpad-root button:hover,
+.launchpad-root button:active,
+.history-root button:hover,
+.history-root button:active,
+.recording-prompt-surface button:hover,
+.recording-prompt-surface button:active,
+button.preview-quick-action:hover,
+button.preview-quick-action:active {{
+  border-color: {focus_ring_color};
+  background: alpha({canvas_background}, {history_tile_alpha:.2});
+  box-shadow: none;
+}}
+.launchpad-root entry,
+.launchpad-root text,
+.launchpad-root combobox button,
+.launchpad-root dropdown > button,
+.recording-prompt-surface entry,
+.recording-prompt-surface text,
+.recording-prompt-surface combobox button,
+.recording-prompt-surface dropdown > button {{
+  border-radius: 0;
+  border: {history_inner_border_width}px solid alpha({text_color}, 0.18);
+  background: alpha({canvas_background}, {history_surface_alpha:.2});
+  box-shadow: none;
+  color: {text_color};
+}}
+.jjaeng-root entry:focus,
+.jjaeng-root text:focus,
+.jjaeng-root combobox button:focus,
+.jjaeng-root dropdown > button:focus {{
+  border-color: {focus_ring_color};
+  box-shadow: none;
+}}
+.icon-button {{
+  border-radius: 0;
+  min-width: {control_size}px;
+  min-height: {control_size}px;
+  padding: 0;
+  border: {history_inner_border_width}px solid alpha({text_color}, 0.16);
+  background: alpha({canvas_background}, {history_surface_alpha:.2});
+  box-shadow: none;
+  transition: color {motion_hover_ms}ms cubic-bezier(0.4, 0, 0.2, 1),
+              border-color {motion_hover_ms}ms cubic-bezier(0.4, 0, 0.2, 1),
+              background {motion_hover_ms}ms cubic-bezier(0.4, 0, 0.2, 1);
 }}
 .icon-button:hover {{
   color: {text_color};
-  background: transparent;
-  border-color: transparent;
-  box-shadow: 0 0 0 1.5px {focus_ring_glow},
-              0 4px 12px rgba(0, 0, 0, 0.10);
+  background: alpha({canvas_background}, {history_tile_alpha:.2});
+  border-color: {focus_ring_color};
+  box-shadow: none;
 }}
 .icon-button:active {{
   color: {text_color};
-  background: transparent;
-  border-color: transparent;
-  box-shadow: 0 0 0 1.5px {focus_ring_glow};
-  transition: color 60ms ease,
-              border-color 60ms ease,
-              box-shadow 60ms ease;
+  background: alpha({canvas_background}, {history_tile_alpha:.2});
+  border-color: {focus_ring_color};
+  box-shadow: none;
+  transition: color 60ms ease, border-color 60ms ease, background 60ms ease;
 }}
 .icon-button:disabled {{
   opacity: 0.38;
@@ -154,8 +241,7 @@ window.floating-editor-window {{
   background-origin: border-box;
   color: {accent_text_color};
   border-color: transparent;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.20),
-              0 0 0 1px rgba(255, 255, 255, 0.12);
+  box-shadow: none;
 }}
 .editor-toolbar button.tool-active image,
 .editor-toolbar button.tool-active:hover image,
@@ -169,8 +255,9 @@ window.floating-editor-window {{
 
 /* ── Close button base + hover ── */
 button.editor-close-button {{
-  border-radius: 999px;
+  border-radius: 0;
   padding: 0;
+  border: {history_inner_border_width}px solid rgba(255, 80, 80, 0.24);
   background: rgba(255, 80, 80, 0.10);
   color: rgba(255, 80, 80, 0.85);
 }}
@@ -178,22 +265,22 @@ button.editor-close-button:hover {{
   background: rgba(255, 80, 80, 0.22);
   border-color: rgba(255, 80, 80, 0.4);
   color: rgba(255, 60, 60, 1.0);
-  box-shadow: 0 0 0 1.5px rgba(255, 80, 80, 0.15);
+  box-shadow: none;
 }}
 button.preview-close-button {{
-  border-radius: 999px;
+  border-radius: 0;
   padding: 0;
+  border: {history_inner_border_width}px solid rgba(255, 80, 80, 0.32);
   background: rgba(255, 80, 80, 0.24);
-  border-color: rgba(255, 80, 80, 0.46);
   color: rgba(255, 64, 64, 1.0);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
+  box-shadow: none;
 }}
 button.preview-close-button:hover,
 button.preview-close-button:active {{
   background: rgba(255, 80, 80, 0.36);
   border-color: rgba(255, 80, 80, 0.58);
   color: rgba(255, 45, 45, 1.0);
-  box-shadow: 0 0 0 2px rgba(255, 80, 80, 0.18);
+  box-shadow: none;
 }}
 button.editor-close-button image,
 button.preview-close-button image {{
@@ -206,13 +293,11 @@ button.preview-close-button image {{
 }}
 .editor-options-bar,
 .preview-bottom-controls {{
-  border-radius: {control_radius}px;
-  border: {border_width}px solid {border_color};
-  background: {panel_background};
+  border-radius: 0;
+  border: {history_border_width}px solid alpha({text_color}, 0.18);
+  background: alpha({canvas_background}, {history_surface_alpha:.2});
   padding: {spacing_8}px {spacing_12}px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14),
-              0 1px 3px rgba(0, 0, 0, 0.08),
-              inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: none;
 }}
 .editor-options-header {{
   min-height: {control_size}px;
@@ -226,10 +311,10 @@ button.preview-close-button image {{
 button.editor-options-toggle {{
   min-width: 30px;
   min-height: 30px;
-  border-radius: 999px;
+  border-radius: 0;
   padding: 0;
-  border-color: transparent;
-  background: transparent;
+  border: {history_inner_border_width}px solid alpha({text_color}, 0.16);
+  background: alpha({canvas_background}, {history_surface_alpha:.2});
   box-shadow: none;
 }}
 button.editor-options-toggle image {{
@@ -237,7 +322,8 @@ button.editor-options-toggle image {{
 }}
 button.editor-options-toggle:hover {{
   border-color: {focus_ring_color};
-  box-shadow: 0 0 0 1px {focus_ring_glow};
+  background: alpha({canvas_background}, {history_tile_alpha:.2});
+  box-shadow: none;
 }}
 .editor-options-collapsed {{
   padding: {spacing_8}px {spacing_8}px;
@@ -248,57 +334,59 @@ button.editor-options-toggle:hover {{
   margin-left: 2px;
 }}
 button.stroke-chip-button {{
-  border-radius: 999px;
+  border-radius: 0;
   min-width: 30px;
   min-height: 30px;
   padding: 0;
-  border: {border_width}px solid {border_color};
-  background: rgba(0, 0, 0, 0.08);
+  border: {history_inner_border_width}px solid alpha({text_color}, 0.16);
+  background: alpha({canvas_background}, {history_surface_alpha:.2});
   box-shadow: none;
   transition: border-color {motion_hover_ms}ms cubic-bezier(0.4, 0, 0.2, 1),
-              box-shadow {motion_hover_ms}ms cubic-bezier(0.4, 0, 0.2, 1);
+              background {motion_hover_ms}ms cubic-bezier(0.4, 0, 0.2, 1);
 }}
 button.stroke-chip-button:hover {{
   border-color: {focus_ring_color};
-  box-shadow: 0 0 0 1px {focus_ring_glow};
+  background: alpha({canvas_background}, {history_tile_alpha:.2});
+  box-shadow: none;
 }}
 button.stroke-chip-active {{
   border-color: {focus_ring_color};
-  box-shadow: 0 0 0 1.5px {focus_ring_glow},
-              0 3px 10px rgba(0, 0, 0, 0.14);
+  background: alpha({canvas_background}, {history_tile_alpha:.2});
+  box-shadow: none;
 }}
 /* ── Shared slider style ── */
 .accent-slider trough {{
   min-height: 4px;
-  border-radius: 999px;
-  background: rgba(127, 127, 127, 0.22);
+  border-radius: 0;
+  border: {history_inner_border_width}px solid alpha({text_color}, 0.14);
+  background: alpha({canvas_background}, {history_surface_alpha:.2});
 }}
 .accent-slider highlight {{
-  border-radius: 999px;
+  border-radius: 0;
   background-image: {accent_gradient};
   background-origin: border-box;
-  box-shadow: 0 0 6px rgba(124, 92, 255, 0.25);
+  box-shadow: none;
 }}
 .accent-slider slider {{
   min-width: 16px;
   min-height: 16px;
-  border-radius: 999px;
-  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 0;
+  border: {history_inner_border_width}px solid alpha({text_color}, 0.18);
   background-image: {accent_gradient};
   background-origin: border-box;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
-  transition: box-shadow {motion_hover_ms}ms cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: none;
+  transition: border-color {motion_hover_ms}ms cubic-bezier(0.4, 0, 0.2, 1);
 }}
 .accent-slider slider:hover {{
-  box-shadow: 0 0 0 4px {focus_ring_glow},
-              0 2px 6px rgba(0, 0, 0, 0.20);
+  border-color: {focus_ring_color};
+  box-shadow: none;
 }}
 .editor-zoom-slider {{
   min-width: 160px;
 }}
 .editor-canvas {{
-  border-radius: {panel_radius}px;
-  border: {border_width}px solid {border_color};
+  border-radius: 0;
+  border: {history_border_width}px solid alpha({text_color}, 0.18);
   background: {canvas_background};
 }}
 
@@ -308,38 +396,56 @@ button.stroke-chip-active {{
 }}
 .preview-top-controls {{
   padding: 0;
-  border-radius: 999px;
+  border-radius: 0;
 }}
 button.preview-quick-action {{
-  min-height: 28px;
+  min-height: 30px;
   min-width: 76px;
   padding: 0 {spacing_8}px;
-  border-radius: 999px;
-  font-size: 11px;
+  border-radius: 0;
+  font-size: {history_button_font_size}px;
+  font-weight: 600;
 }}
 button.preview-quick-action .preview-shortcut-hint {{
   opacity: 0.68;
-  font-size: 10px;
+  font-size: {history_meta_font_size}px;
 }}
 button.preview-quick-action.suggested-action {{
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+  background-image: linear-gradient(
+                      rgba(0, 0, 0, 0.20),
+                      rgba(0, 0, 0, 0.20)
+                    ),
+                    {accent_gradient};
+  color: {accent_text_color};
+  border-color: transparent;
+  box-shadow: none;
+}}
+button.preview-quick-action.suggested-action:hover,
+button.preview-quick-action.suggested-action:active {{
+  background-image: linear-gradient(
+                      rgba(0, 0, 0, 0.20),
+                      rgba(0, 0, 0, 0.20)
+                    ),
+                    {accent_gradient};
+  color: {accent_text_color};
+  border-color: transparent;
+  box-shadow: none;
 }}
 
 /* ── Icon buttons (shared base) ── */
 button.preview-round-button {{
-  border-radius: 999px;
+  border-radius: 0;
   padding: 0;
 }}
 
 /* ── Pin toggle: neutral by default, emphasized when pinned ── */
 button.preview-pin-toggle {{
-  border-radius: 999px;
+  border-radius: 0;
   padding: 0;
-  border: {border_width}px solid {border_color};
-  background: {panel_background};
+  border: {history_inner_border_width}px solid alpha({text_color}, 0.16);
+  background: alpha({canvas_background}, {history_surface_alpha:.2});
   color: {text_color};
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.14),
-              inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: none;
 }}
 button.preview-pin-toggle image {{
   -gtk-icon-size: {pin_icon_size}px;
@@ -347,10 +453,9 @@ button.preview-pin-toggle image {{
 button.preview-pin-toggle:hover,
 button.preview-pin-toggle:active {{
   border-color: {focus_ring_color};
-  background: {panel_background};
+  background: alpha({canvas_background}, {history_tile_alpha:.2});
   color: {text_color};
-  box-shadow: 0 0 0 1.5px {focus_ring_glow},
-              0 4px 12px rgba(0, 0, 0, 0.14);
+  box-shadow: none;
 }}
 button.preview-pin-toggle:checked {{
   background-image: linear-gradient(
@@ -361,16 +466,18 @@ button.preview-pin-toggle:checked {{
   background-origin: border-box;
   border-color: transparent;
   color: {accent_text_color};
-  box-shadow: 0 0 0 1.5px {focus_ring_glow},
-              0 6px 14px rgba(0, 0, 0, 0.22),
-              inset 0 0 0 1px rgba(255, 255, 255, 0.24);
+  box-shadow: none;
 }}
 button.preview-pin-toggle:checked:hover,
 button.preview-pin-toggle:checked:active {{
+  background-image: linear-gradient(
+                      rgba(0, 0, 0, 0.24),
+                      rgba(0, 0, 0, 0.24)
+                    ),
+                    {accent_gradient};
+  border-color: transparent;
   color: {accent_text_color};
-  box-shadow: 0 0 0 1.5px {focus_ring_glow},
-              0 8px 18px rgba(0, 0, 0, 0.24),
-              inset 0 0 0 1px rgba(255, 255, 255, 0.30);
+  box-shadow: none;
 }}
 
 /* ── Opacity slider ── */
@@ -380,11 +487,10 @@ button.preview-pin-toggle:checked:active {{
 
 /* ── Launchpad layout ── */
 .launchpad-root {{
-  border-radius: {card_radius}px;
-  border: {border_width}px solid {border_color};
-  background: {panel_background};
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12),
-              0 2px 6px rgba(0, 0, 0, 0.08);
+  border-radius: 0;
+  border: {history_border_width}px solid alpha({text_color}, 0.82);
+  background: alpha({canvas_background}, {history_surface_alpha:.2});
+  box-shadow: none;
 }}
 label.launchpad-title {{
   font-size: 18px;
@@ -411,9 +517,9 @@ label.launchpad-version {{
   font-size: 11px;
   opacity: 0.5;
   padding: 2px 8px;
-  border-radius: 999px;
-  border: {border_width}px solid {border_color};
-  background: rgba(0, 0, 0, 0.04);
+  border-radius: 0;
+  border: {history_inner_border_width}px solid alpha({text_color}, 0.18);
+  background: alpha({canvas_background}, {history_surface_alpha:.2});
 }}
 .launchpad-info-row > * {{
   min-width: 0;
@@ -421,12 +527,12 @@ label.launchpad-version {{
 label.launchpad-capture-ids {{
   font-size: 12px;
   padding-top: {spacing_4}px;
-  border-top: {border_width}px solid {border_color};
+  border-top: {history_inner_border_width}px solid alpha({text_color}, 0.16);
 }}
 frame.launchpad-panel {{
-  border-radius: {control_radius}px;
-  border: {border_width}px solid {border_color};
-  background: rgba(0, 0, 0, 0.03);
+  border-radius: 0;
+  border: {history_inner_border_width}px solid alpha({text_color}, 0.16);
+  background: alpha({canvas_background}, {history_surface_alpha:.2});
   padding: {spacing_12}px;
 }}
 frame.launchpad-panel > border {{
@@ -440,7 +546,7 @@ box.launchpad-recording-controls combobox,
 box.launchpad-recording-mic-row entry {{
   min-width: 120px;
 }}
-button.launchpad-primary-button {{
+.launchpad-root button.launchpad-primary-button {{
   background-image: linear-gradient(
                       rgba(0, 0, 0, 0.20),
                       rgba(0, 0, 0, 0.20)
@@ -450,17 +556,24 @@ button.launchpad-primary-button {{
   border-color: transparent;
   font-weight: 600;
 }}
-button.launchpad-primary-button:hover,
-button.launchpad-primary-button:active {{
+.launchpad-root button.launchpad-primary-button:hover,
+.launchpad-root button.launchpad-primary-button:active {{
+  background-image: linear-gradient(
+                      rgba(0, 0, 0, 0.20),
+                      rgba(0, 0, 0, 0.20)
+                    ),
+                    {accent_gradient};
   color: {accent_text_color};
+  border-color: transparent;
 }}
-button.launchpad-danger-button {{
+.launchpad-root button.launchpad-danger-button {{
   background: rgba(255, 80, 80, 0.08);
   color: rgba(255, 80, 80, 0.92);
   border-color: rgba(255, 80, 80, 0.22);
 }}
-button.launchpad-danger-button:hover,
-button.launchpad-danger-button:active {{
+.launchpad-root button.launchpad-danger-button:hover,
+.launchpad-root button.launchpad-danger-button:active {{
+  background: rgba(255, 80, 80, 0.16);
   color: rgba(255, 65, 65, 1.0);
   border-color: rgba(255, 80, 80, 0.34);
 }}
@@ -474,7 +587,7 @@ frame.recording-selection-frame {{
   border-radius: 0;
   border: {history_border_width}px solid {focus_ring_color};
   background: alpha({canvas_background}, 0.04);
-  box-shadow: 0 0 0 1px alpha({text_color}, 0.20);
+  box-shadow: none;
 }}
 frame.recording-selection-frame > border {{
   border: none;
@@ -536,7 +649,13 @@ button.recording-prompt-button-primary {{
 }}
 button.recording-prompt-button-primary:hover,
 button.recording-prompt-button-primary:active {{
+  background-image: linear-gradient(
+                      rgba(0, 0, 0, 0.20),
+                      rgba(0, 0, 0, 0.20)
+                    ),
+                    {accent_gradient};
   color: {accent_text_color};
+  border-color: transparent;
 }}
 button.recording-prompt-button-danger {{
   background: rgba(255, 80, 80, 0.08);
@@ -545,6 +664,7 @@ button.recording-prompt-button-danger {{
 }}
 button.recording-prompt-button-danger:hover,
 button.recording-prompt-button-danger:active {{
+  background: rgba(255, 80, 80, 0.16);
   color: rgba(255, 65, 65, 1.0);
   border-color: rgba(255, 80, 80, 0.34);
 }}
@@ -614,8 +734,23 @@ box.history-filter-row button.history-filter-button {{
   background: alpha({canvas_background}, {history_surface_alpha:.2});
 }}
 box.history-filter-row button.history-filter-button.history-filter-active {{
-  border-color: alpha({text_color}, 0.46);
-  background: alpha({canvas_background}, {history_tile_alpha:.2});
+  background-image: linear-gradient(
+                      rgba(0, 0, 0, 0.20),
+                      rgba(0, 0, 0, 0.20)
+                    ),
+                    {accent_gradient};
+  color: {accent_text_color};
+  border-color: transparent;
+}}
+box.history-filter-row button.history-filter-button.history-filter-active:hover,
+box.history-filter-row button.history-filter-button.history-filter-active:active {{
+  background-image: linear-gradient(
+                      rgba(0, 0, 0, 0.20),
+                      rgba(0, 0, 0, 0.20)
+                    ),
+                    {accent_gradient};
+  color: {accent_text_color};
+  border-color: transparent;
 }}
 frame.history-tile {{
   min-width: 264px;
@@ -633,6 +768,7 @@ label.history-media-badge {{
 }}
 label.history-media-badge-video {{
   border-color: alpha({focus_ring_color}, 0.45);
+  color: {focus_ring_color};
 }}
 label.history-tile-title {{
   font-size: {history_meta_font_size}px;
@@ -674,39 +810,55 @@ box.history-action-row button.history-action-button {{
   border: {history_inner_border_width}px solid alpha({text_color}, 0.16);
   background: alpha({canvas_background}, {history_tile_alpha:.2});
 }}
+box.history-action-row button.history-action-button.suggested-action {{
+  background-image: linear-gradient(
+                      rgba(0, 0, 0, 0.20),
+                      rgba(0, 0, 0, 0.20)
+                    ),
+                    {accent_gradient};
+  color: {accent_text_color};
+  border-color: transparent;
+}}
+box.history-action-row button.history-action-button.suggested-action:hover,
+box.history-action-row button.history-action-button.suggested-action:active {{
+  background-image: linear-gradient(
+                      rgba(0, 0, 0, 0.20),
+                      rgba(0, 0, 0, 0.20)
+                    ),
+                    {accent_gradient};
+  color: {accent_text_color};
+  border-color: transparent;
+}}
 
 /* ── Toast badge ── */
 .toast-badge {{
-  border-radius: {control_radius}px;
-  border: {border_width}px solid {border_color};
-  background: {panel_background};
+  border-radius: 0;
+  border: {history_border_width}px solid alpha({text_color}, 0.82);
+  background: alpha({canvas_background}, {history_surface_alpha:.2});
   color: {text_color};
   padding: {spacing_8}px {spacing_16}px;
   font-size: 13px;
   font-weight: 500;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14),
-              0 1px 3px rgba(0, 0, 0, 0.08);
+  font-family: {history_font_family};
+  box-shadow: none;
 }}
 
 /* ── Focus visible ── */
 .jjaeng-root button:focus-visible,
-.jjaeng-root scale:focus-visible {{
+.jjaeng-root scale:focus-visible,
+.jjaeng-root entry:focus-visible,
+.jjaeng-root text:focus-visible,
+.jjaeng-root combobox button:focus-visible,
+.jjaeng-root dropdown > button:focus-visible {{
   border-color: {focus_ring_color};
-  box-shadow: 0 0 0 2px {focus_ring_glow};
+  box-shadow: none;
 }}
 ",
-        card_radius = tokens.card_radius,
-        panel_radius = tokens.panel_radius,
-        control_radius = tokens.control_radius,
-        border_width = tokens.border_width,
-        border_color = colors.border_color,
-        panel_background = colors.panel_background,
         accent_gradient = colors.accent_gradient,
         accent_text_color = colors.accent_text_color,
         canvas_background = colors.canvas_background,
         text_color = colors.text_color,
         focus_ring_color = colors.focus_ring_color,
-        focus_ring_glow = colors.focus_ring_glow,
         history_font_family = history_font_family,
         history_base_font_size = history_base_font_size,
         history_meta_font_size = history_meta_font_size,

@@ -209,6 +209,26 @@ fn bottom_centered_window_geometry(
     (x, y, width, height)
 }
 
+fn bottom_left_preview_geometry(
+    geometry: preview::PreviewWindowGeometry,
+    bounds: preview::PreviewBounds,
+    margin: i32,
+) -> preview::PreviewWindowGeometry {
+    let margin = margin.max(0);
+    let width = geometry.width.max(1).min(bounds.width.max(1));
+    let height = geometry.height.max(1).min(bounds.height.max(1));
+
+    preview::PreviewWindowGeometry {
+        x: bounds.x.saturating_add(margin),
+        y: bounds
+            .y
+            .saturating_add(bounds.height.saturating_sub(height).saturating_sub(margin))
+            .max(bounds.y),
+        width,
+        height,
+    }
+}
+
 pub(super) fn compute_initial_preview_placement(
     artifact: &capture::CaptureArtifact,
     style_tokens: StyleTokens,
@@ -222,85 +242,26 @@ pub(super) fn compute_initial_preview_placement(
     let center_y = source.y.saturating_add(source.height / 2);
     let bounds = monitor_bounds_for_point(center_x, center_y)
         .unwrap_or_else(|| fallback_preview_bounds(source, style_tokens));
-    let geometry = compact_preview_geometry(bounds, style_tokens);
-
-    preview::PreviewPlacement {
-        geometry: preview::PreviewWindowGeometry {
-            x: geometry.x,
-            y: geometry.y,
-            width: geometry.width,
-            height: geometry.height,
+    let mut placement = preview::compute_preview_placement(
+        source,
+        bounds,
+        preview::PreviewSizingTokens {
+            default_width: style_tokens.preview_default_width,
+            default_height: style_tokens.preview_default_height,
+            min_width: style_tokens.preview_min_width,
+            min_height: style_tokens.preview_min_height,
         },
-        min_width: geometry.width,
-        min_height: geometry.height,
-        max_width: geometry.width,
-        max_height: geometry.height,
-    }
-}
+    );
 
-fn compact_preview_geometry(
-    bounds: preview::PreviewBounds,
-    style_tokens: StyleTokens,
-) -> RuntimeWindowGeometry {
-    let margin = style_tokens.spacing_24.max(0);
-    let available_width = bounds.width.saturating_sub(margin.saturating_mul(2)).max(1);
-    let available_height = bounds
-        .height
-        .saturating_sub(margin.saturating_mul(2))
-        .max(1);
-    let width = style_tokens
-        .preview_default_width
-        .min(available_width)
-        .max(1);
-    let height = style_tokens
-        .preview_default_height
-        .min(available_height)
-        .max(1);
-    let x = bounds.x.saturating_add(margin);
-    let y = bounds
-        .y
-        .saturating_add(bounds.height.saturating_sub(height).saturating_sub(margin));
+    placement.geometry =
+        bottom_left_preview_geometry(placement.geometry, bounds, style_tokens.spacing_24);
 
-    RuntimeWindowGeometry::with_position(x, y, width, height)
+    placement
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn compact_preview_geometry_anchors_bottom_left_with_margin() {
-        let bounds = preview::PreviewBounds {
-            x: 100,
-            y: 50,
-            width: 1920,
-            height: 1080,
-        };
-
-        let geometry = compact_preview_geometry(bounds, crate::ui::LAYOUT_TOKENS);
-
-        assert_eq!(
-            geometry,
-            RuntimeWindowGeometry::with_position(124, 870, 420, 236)
-        );
-    }
-
-    #[test]
-    fn compact_preview_geometry_clamps_to_small_monitor_bounds() {
-        let bounds = preview::PreviewBounds {
-            x: 0,
-            y: 0,
-            width: 300,
-            height: 200,
-        };
-
-        let geometry = compact_preview_geometry(bounds, crate::ui::LAYOUT_TOKENS);
-
-        assert_eq!(
-            geometry,
-            RuntimeWindowGeometry::with_position(24, 24, 252, 152)
-        );
-    }
 
     #[test]
     fn bottom_centered_window_geometry_anchors_near_bottom_center() {
@@ -316,5 +277,31 @@ mod tests {
         );
 
         assert_eq!(geometry, (700, 880, 520, 176));
+    }
+
+    #[test]
+    fn bottom_left_preview_geometry_anchors_preview_with_margin() {
+        let bounds = preview::PreviewBounds {
+            x: 100,
+            y: 50,
+            width: 1920,
+            height: 1080,
+        };
+        let geometry = preview::PreviewWindowGeometry {
+            x: 500,
+            y: 400,
+            width: 640,
+            height: 360,
+        };
+
+        assert_eq!(
+            bottom_left_preview_geometry(geometry, bounds, 24),
+            preview::PreviewWindowGeometry {
+                x: 124,
+                y: 746,
+                width: 640,
+                height: 360,
+            }
+        );
     }
 }

@@ -198,6 +198,7 @@ pub(super) fn present_recording_prompt(
             )),
             false,
             false,
+            false,
         );
     }
 
@@ -468,6 +469,7 @@ pub(super) fn present_recording_prompt(
         true,
         Some(prompt_geometry),
         false,
+        true,
         true,
     );
 

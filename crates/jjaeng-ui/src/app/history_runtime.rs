@@ -76,6 +76,7 @@ pub(super) fn present_history_window(context: &HistoryRenderContext, render: &Rc
         Some((0, 0, width, height)),
         true,
         true,
+        false,
     );
     runtime.window.present();
     refresh_history_window_if_open(context, render);
@@ -673,7 +674,7 @@ fn build_history_tile(
                 (render.as_ref())();
             }
         });
-        preview_frame.add_controller(double_click);
+        picture.add_controller(double_click);
     }
 
     tile

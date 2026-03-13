@@ -893,13 +893,7 @@ impl App {
                 recording_defaults,
             );
             let launchpad_toast_runtime = ToastRuntime::new(&launchpad.toast_label);
-            let open_editor_button = launchpad.open_editor_button.clone();
-            let close_preview_button = launchpad.close_preview_button.clone();
             let close_editor_button = launchpad.close_editor_button.clone();
-            let save_button = launchpad.save_button.clone();
-            let copy_button = launchpad.copy_button.clone();
-            let ocr_button = launchpad.ocr_button.clone();
-            let delete_button = launchpad.delete_button.clone();
 
             window.set_child(Some(&launchpad.root));
             let ocr_available = jjaeng_core::ocr::resolve_model_dir().is_some();
@@ -911,19 +905,31 @@ impl App {
             let recording_flow_pending = Rc::new(Cell::new(false));
             let app_for_preview = app.clone();
             let app_for_lifecycle = app.clone();
+            let render_handle = Rc::new(RefCell::new(None::<Rc<dyn Fn()>>));
+            let launchpad_actions = LaunchpadActionExecutor::new(
+                runtime_session_for_activate.clone(),
+                preview_action_target_capture_id.clone(),
+                machine_for_activate.clone(),
+                storage_service_for_activate.clone(),
+                history_service_for_activate.clone(),
+                status_log_for_activate.clone(),
+                preview_windows.clone(),
+                runtime_window_state.clone(),
+                launchpad_toast_runtime.clone(),
+                style_tokens.toast_duration_ms,
+                ocr_engine.clone(),
+                ocr_language,
+                ocr_in_progress.clone(),
+            );
             let preview_render_context = PreviewRenderContext::new(
                 app_for_preview.clone(),
                 style_tokens,
                 motion_hover_ms,
                 status_log_for_activate.clone(),
-                save_button.clone(),
-                copy_button.clone(),
-                ocr_button.clone(),
-                open_editor_button.clone(),
-                close_preview_button.clone(),
-                delete_button.clone(),
                 preview_windows.clone(),
                 preview_action_target_capture_id.clone(),
+                launchpad_actions.clone(),
+                render_handle.clone(),
                 runtime_window_state.clone(),
                 editor_window.clone(),
                 editor_close_guard.clone(),
@@ -975,7 +981,6 @@ impl App {
                 editor_has_unsaved_changes: editor_has_unsaved_changes.clone(),
                 history_window: history_window.clone(),
             };
-            let render_handle = Rc::new(RefCell::new(None::<Rc<dyn Fn()>>));
 
             let render: Rc<dyn Fn()> = {
                 let runtime_session = runtime_session_for_activate.clone();
@@ -1112,21 +1117,6 @@ impl App {
                 })
             };
 
-            let launchpad_actions = LaunchpadActionExecutor::new(
-                runtime_session_for_activate.clone(),
-                preview_action_target_capture_id.clone(),
-                machine_for_activate.clone(),
-                storage_service_for_activate.clone(),
-                history_service_for_activate.clone(),
-                status_log_for_activate.clone(),
-                preview_windows.clone(),
-                runtime_window_state.clone(),
-                launchpad_toast_runtime.clone(),
-                style_tokens.toast_duration_ms,
-                ocr_engine.clone(),
-                ocr_language,
-                ocr_in_progress.clone(),
-            );
             let begin_recording: Rc<dyn Fn(RecordingRequest, Option<RecordingSelection>, bool)> = {
                 let machine = machine_for_activate.clone();
                 let status_log = status_log_for_activate.clone();

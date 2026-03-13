@@ -230,6 +230,7 @@ pub(super) fn request_window_floating_with_geometry(
     geometry: Option<(i32, i32, i32, i32)>,
     center_after_resize: bool,
     force_opaque: bool,
+    focus_after_geometry: bool,
 ) {
     if std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_none() {
         tracing::debug!(
@@ -275,6 +276,7 @@ pub(super) fn request_window_floating_with_geometry(
                 if force_opaque {
                     set_hypr_window_prop(&window_name, &selector, "opaque", "on");
                 }
+                let mut should_focus_window = focus_after_geometry;
                 if let Some((x, y, width, height)) = geometry {
                     let resize_arg =
                         format!("exact {} {},{}", width.max(1), height.max(1), selector);
@@ -282,6 +284,7 @@ pub(super) fn request_window_floating_with_geometry(
                     if center_after_resize {
                         dispatches.push(("focuswindow", selector.clone()));
                         dispatches.push(("centerwindow", String::new()));
+                        should_focus_window = false;
                     } else {
                         dispatches.push(("movewindowpixel", format!("exact {x} {y},{selector}")));
                     }
@@ -322,6 +325,38 @@ pub(super) fn request_window_floating_with_geometry(
                                     "window geometry dispatch failed"
                                 );
                             }
+                        }
+                    }
+                }
+                if should_focus_window {
+                    let outcome = Command::new("hyprctl")
+                        .args(["dispatch", "focuswindow", &selector])
+                        .output();
+                    match outcome {
+                        Ok(result) if result.status.success() => {
+                            tracing::debug!(
+                                window = window_name,
+                                selector = selector,
+                                "focused window after floating request"
+                            );
+                        }
+                        Ok(result) => {
+                            let stderr = String::from_utf8_lossy(&result.stderr);
+                            tracing::warn!(
+                                window = window_name,
+                                selector = selector,
+                                status = result.status.code(),
+                                stderr = stderr.trim(),
+                                "hyprctl focuswindow returned non-zero status"
+                            );
+                        }
+                        Err(err) => {
+                            tracing::debug!(
+                                window = window_name,
+                                selector = selector,
+                                ?err,
+                                "hyprctl focuswindow failed"
+                            );
                         }
                     }
                 }

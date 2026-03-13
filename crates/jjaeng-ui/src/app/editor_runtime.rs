@@ -1129,6 +1129,7 @@ pub(super) fn render_editor_state(
                 ),
                 false,
                 false,
+                true,
             );
             *editor_capture_id.borrow_mut() = Some(artifact.capture_id.clone());
             *editor_window.borrow_mut() = Some(editor_window_instance);

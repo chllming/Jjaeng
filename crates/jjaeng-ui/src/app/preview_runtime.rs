@@ -1,6 +1,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::time::Duration;
 
 use crate::ui::StyleTokens;
 use gtk4::prelude::*;
@@ -10,11 +11,12 @@ use gtk4::{
 };
 use jjaeng_core::capture;
 use jjaeng_core::input::{resolve_shortcut, InputContext, InputMode, ShortcutAction};
-use jjaeng_core::preview;
+use jjaeng_core::preview::{self, PreviewAction};
 
 use super::hover_controls::set_revealer_visibility;
 use super::hypr::request_window_floating_with_geometry;
 use super::input_bridge::{normalize_shortcut_key, shortcut_modifiers};
+use super::launchpad_actions::LaunchpadActionExecutor;
 use super::layout::compute_initial_preview_placement;
 use super::runtime_support::{
     close_all_preview_windows, close_preview_window_for_capture, PreviewWindowRuntime, ToastRuntime,
@@ -28,14 +30,10 @@ pub(super) struct PreviewRenderContext {
     style_tokens: StyleTokens,
     motion_hover_ms: u32,
     status_log: Rc<RefCell<String>>,
-    save_button: Button,
-    copy_button: Button,
-    ocr_button: Button,
-    open_editor_button: Button,
-    close_preview_button: Button,
-    delete_button: Button,
     preview_windows: Rc<RefCell<HashMap<String, PreviewWindowRuntime>>>,
     preview_action_target_capture_id: Rc<RefCell<Option<String>>>,
+    launchpad_actions: LaunchpadActionExecutor,
+    render_handle: Rc<RefCell<Option<Rc<dyn Fn()>>>>,
     runtime_window_state: Rc<RefCell<RuntimeWindowState>>,
     editor_window: Rc<RefCell<Option<ApplicationWindow>>>,
     editor_close_guard: Rc<Cell<bool>>,
@@ -50,14 +48,10 @@ impl PreviewRenderContext {
         style_tokens: StyleTokens,
         motion_hover_ms: u32,
         status_log: Rc<RefCell<String>>,
-        save_button: Button,
-        copy_button: Button,
-        ocr_button: Button,
-        open_editor_button: Button,
-        close_preview_button: Button,
-        delete_button: Button,
         preview_windows: Rc<RefCell<HashMap<String, PreviewWindowRuntime>>>,
         preview_action_target_capture_id: Rc<RefCell<Option<String>>>,
+        launchpad_actions: LaunchpadActionExecutor,
+        render_handle: Rc<RefCell<Option<Rc<dyn Fn()>>>>,
         runtime_window_state: Rc<RefCell<RuntimeWindowState>>,
         editor_window: Rc<RefCell<Option<ApplicationWindow>>>,
         editor_close_guard: Rc<Cell<bool>>,
@@ -69,14 +63,10 @@ impl PreviewRenderContext {
             style_tokens,
             motion_hover_ms,
             status_log,
-            save_button,
-            copy_button,
-            ocr_button,
-            open_editor_button,
-            close_preview_button,
-            delete_button,
             preview_windows,
             preview_action_target_capture_id,
+            launchpad_actions,
+            render_handle,
             runtime_window_state,
             editor_window,
             editor_close_guard,
@@ -172,47 +162,6 @@ fn prune_stale_preview_window_geometries(
     }
 }
 
-fn connect_preview_action_bridge(
-    trigger_button: &Button,
-    launchpad_button: &Button,
-    preview_action_target_capture_id: &Rc<RefCell<Option<String>>>,
-    capture_id: &str,
-) {
-    let launchpad_button = launchpad_button.clone();
-    let preview_action_target_capture_id = preview_action_target_capture_id.clone();
-    let capture_id = capture_id.to_string();
-    trigger_button.connect_clicked(move |_| {
-        *preview_action_target_capture_id.borrow_mut() = Some(capture_id.clone());
-        launchpad_button.emit_clicked();
-    });
-}
-
-fn connect_preview_action_bridges(
-    bridges: &[(&Button, &Button)],
-    preview_action_target_capture_id: &Rc<RefCell<Option<String>>>,
-    capture_id: &str,
-) {
-    for (trigger_button, launchpad_button) in bridges {
-        connect_preview_action_bridge(
-            trigger_button,
-            launchpad_button,
-            preview_action_target_capture_id,
-            capture_id,
-        );
-    }
-}
-
-#[derive(Clone)]
-struct PreviewLaunchpadButtons {
-    save_button: Button,
-    copy_button: Button,
-    ocr_button: Button,
-    open_editor_button: Button,
-    close_preview_button: Button,
-    delete_button: Button,
-    ocr_available: bool,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PreviewShortcutTarget {
     Save,
@@ -221,6 +170,12 @@ enum PreviewShortcutTarget {
     Edit,
     Delete,
     Close,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PreviewPrimaryClickOutcome {
+    Focus,
+    Edit,
 }
 
 fn preview_shortcut_target(action: ShortcutAction) -> Option<PreviewShortcutTarget> {
@@ -235,37 +190,60 @@ fn preview_shortcut_target(action: ShortcutAction) -> Option<PreviewShortcutTarg
     }
 }
 
-impl PreviewLaunchpadButtons {
-    fn from_context(context: &PreviewRenderContext) -> Self {
-        Self {
-            save_button: context.save_button.clone(),
-            copy_button: context.copy_button.clone(),
-            ocr_button: context.ocr_button.clone(),
-            open_editor_button: context.open_editor_button.clone(),
-            close_preview_button: context.close_preview_button.clone(),
-            delete_button: context.delete_button.clone(),
-            ocr_available: context.ocr_available,
-        }
+fn preview_primary_click_outcome(n_press: i32) -> PreviewPrimaryClickOutcome {
+    if n_press >= 2 {
+        PreviewPrimaryClickOutcome::Edit
+    } else {
+        PreviewPrimaryClickOutcome::Focus
     }
+}
 
-    fn emit_shortcut_action(&self, action: ShortcutAction) -> bool {
-        match preview_shortcut_target(action) {
-            Some(PreviewShortcutTarget::Save) => self.save_button.emit_clicked(),
-            Some(PreviewShortcutTarget::Copy) => self.copy_button.emit_clicked(),
-            Some(PreviewShortcutTarget::Ocr) => {
-                if self.ocr_available {
-                    self.ocr_button.emit_clicked();
-                } else {
-                    return false;
-                }
-            }
-            Some(PreviewShortcutTarget::Edit) => self.open_editor_button.emit_clicked(),
-            Some(PreviewShortcutTarget::Delete) => self.delete_button.emit_clicked(),
-            Some(PreviewShortcutTarget::Close) => self.close_preview_button.emit_clicked(),
-            _ => return false,
-        }
-        true
+fn request_preview_render(context: &PreviewRenderContext) {
+    let render = context.render_handle.borrow().as_ref().cloned();
+    if let Some(render) = render {
+        (render.as_ref())();
     }
+}
+
+fn select_preview_capture(context: &PreviewRenderContext, capture_id: &str) {
+    *context.preview_action_target_capture_id.borrow_mut() = Some(capture_id.to_string());
+}
+
+fn run_preview_action(context: &PreviewRenderContext, capture_id: &str, action: PreviewAction) {
+    select_preview_capture(context, capture_id);
+    match action {
+        PreviewAction::Save | PreviewAction::Copy => {
+            let launchpad_actions = context.launchpad_actions.clone();
+            let context = context.clone();
+            launchpad_actions.run_preview_action_async(action, move || {
+                request_preview_render(&context);
+            });
+        }
+        PreviewAction::Edit => {
+            context.launchpad_actions.open_editor();
+            request_preview_render(context);
+        }
+        PreviewAction::Delete => {
+            let launchpad_actions = context.launchpad_actions.clone();
+            let context = context.clone();
+            launchpad_actions.delete_active_capture_async(move || {
+                request_preview_render(&context);
+            });
+        }
+        PreviewAction::Close => {
+            context.launchpad_actions.close_preview();
+            request_preview_render(context);
+        }
+    }
+}
+
+fn run_preview_ocr_action(context: &PreviewRenderContext, capture_id: &str) {
+    if !context.ocr_available {
+        return;
+    }
+    select_preview_capture(context, capture_id);
+    context.launchpad_actions.run_preview_ocr_action();
+    request_preview_render(context);
 }
 
 struct PreviewWindowBuild {
@@ -373,6 +351,7 @@ fn build_preview_window(
     preview_window_instance.set_decorated(false);
     preview_window_instance.add_css_class(jjaeng_core::identity::APP_CSS_ROOT);
     preview_window_instance.add_css_class("floating-preview-window");
+    preview_window_instance.set_focusable(true);
 
     let placement = compute_initial_preview_placement(artifact, context.style_tokens);
     let mut preview_shell_model = preview::PreviewWindowShell::with_capture_size(
@@ -407,6 +386,7 @@ fn build_preview_window(
     preview_surface.add_css_class("preview-surface");
     preview_surface.set_hexpand(true);
     preview_surface.set_vexpand(true);
+    preview_surface.set_focusable(true);
     preview_surface.set_overflow(Overflow::Hidden);
     preview_surface.set_opacity(preview_shell.borrow().transparency() as f64);
     preview_surface.set_child(Some(&preview_image));
@@ -445,18 +425,23 @@ fn connect_preview_window_action_wiring(
     build: &PreviewWindowBuild,
     capture_id: &str,
 ) -> Rc<Cell<bool>> {
-    connect_preview_action_bridges(
-        &[
-            (&build.quick_save_button, &context.save_button),
-            (&build.quick_copy_button, &context.copy_button),
-        ],
-        &context.preview_action_target_capture_id,
-        capture_id,
-    );
-
-    let launchpad_buttons = PreviewLaunchpadButtons::from_context(context);
     {
-        let preview_action_target_capture_id = context.preview_action_target_capture_id.clone();
+        let context = context.clone();
+        let capture_id = capture_id.to_string();
+        build.quick_save_button.connect_clicked(move |_| {
+            run_preview_action(&context, &capture_id, PreviewAction::Save);
+        });
+    }
+    {
+        let context = context.clone();
+        let capture_id = capture_id.to_string();
+        build.quick_copy_button.connect_clicked(move |_| {
+            run_preview_action(&context, &capture_id, PreviewAction::Copy);
+        });
+    }
+
+    {
+        let context = context.clone();
         let capture_id = capture_id.to_string();
         let key_controller = gtk4::EventControllerKey::new();
         key_controller.connect_key_pressed(move |_, key, keycode, modifier| {
@@ -473,45 +458,68 @@ fn connect_preview_window_action_wiring(
             let Some(action) = shortcut else {
                 return gtk4::glib::Propagation::Proceed;
             };
-
-            *preview_action_target_capture_id.borrow_mut() = Some(capture_id.clone());
-            if launchpad_buttons.emit_shortcut_action(action) {
-                gtk4::glib::Propagation::Stop
-            } else {
-                gtk4::glib::Propagation::Proceed
+            match preview_shortcut_target(action) {
+                Some(PreviewShortcutTarget::Save) => {
+                    run_preview_action(&context, &capture_id, PreviewAction::Save);
+                    gtk4::glib::Propagation::Stop
+                }
+                Some(PreviewShortcutTarget::Copy) => {
+                    run_preview_action(&context, &capture_id, PreviewAction::Copy);
+                    gtk4::glib::Propagation::Stop
+                }
+                Some(PreviewShortcutTarget::Ocr) => {
+                    if context.ocr_available {
+                        run_preview_ocr_action(&context, &capture_id);
+                        gtk4::glib::Propagation::Stop
+                    } else {
+                        gtk4::glib::Propagation::Proceed
+                    }
+                }
+                Some(PreviewShortcutTarget::Edit) => {
+                    run_preview_action(&context, &capture_id, PreviewAction::Edit);
+                    gtk4::glib::Propagation::Stop
+                }
+                Some(PreviewShortcutTarget::Delete) => {
+                    run_preview_action(&context, &capture_id, PreviewAction::Delete);
+                    gtk4::glib::Propagation::Stop
+                }
+                Some(PreviewShortcutTarget::Close) => {
+                    run_preview_action(&context, &capture_id, PreviewAction::Close);
+                    gtk4::glib::Propagation::Stop
+                }
+                None => gtk4::glib::Propagation::Proceed,
             }
         });
         build.window.add_controller(key_controller);
     }
 
     {
-        let open_editor_button = context.open_editor_button.clone();
-        let preview_action_target_capture_id = context.preview_action_target_capture_id.clone();
+        let preview_surface = build.preview_surface.clone();
+        let window = build.window.clone();
+        let context = context.clone();
         let capture_id = capture_id.to_string();
-        let double_click = GestureClick::new();
-        double_click.set_button(1);
-        double_click.connect_pressed(move |_, n_press, _, _| {
-            if n_press < 2 {
-                return;
+        let primary_click = GestureClick::new();
+        primary_click.set_button(1);
+        primary_click.connect_pressed(move |_, n_press, _, _| {
+            window.present();
+            preview_surface.grab_focus();
+            if preview_primary_click_outcome(n_press) == PreviewPrimaryClickOutcome::Edit {
+                run_preview_action(&context, &capture_id, PreviewAction::Edit);
             }
-            *preview_action_target_capture_id.borrow_mut() = Some(capture_id.clone());
-            open_editor_button.emit_clicked();
         });
-        build.preview_surface.add_controller(double_click);
+        build.preview_surface.add_controller(primary_click);
     }
 
     let close_guard = Rc::new(Cell::new(false));
     {
-        let close_preview_button = context.close_preview_button.clone();
-        let preview_action_target_capture_id = context.preview_action_target_capture_id.clone();
+        let context = context.clone();
         let capture_id = capture_id.to_string();
         let close_guard = close_guard.clone();
         build.window.connect_close_request(move |_| {
             if close_guard.get() {
                 return gtk4::glib::Propagation::Proceed;
             }
-            *preview_action_target_capture_id.borrow_mut() = Some(capture_id.clone());
-            close_preview_button.emit_clicked();
+            run_preview_action(&context, &capture_id, PreviewAction::Close);
             gtk4::glib::Propagation::Stop
         });
     }
@@ -532,6 +540,20 @@ fn create_preview_window_for_capture(
     connect_preview_window_interactions(&build);
 
     build.window.present();
+    {
+        let preview_surface = build.preview_surface.clone();
+        build.window.connect_is_active_notify(move |window| {
+            if window.is_active() {
+                preview_surface.grab_focus();
+            }
+        });
+    }
+    {
+        let preview_surface = build.preview_surface.clone();
+        gtk4::glib::timeout_add_local_once(Duration::from_millis(1), move || {
+            preview_surface.grab_focus();
+        });
+    }
     request_window_floating_with_geometry(
         "preview",
         &build.title,
@@ -539,12 +561,14 @@ fn create_preview_window_for_capture(
         Some(build.floating_geometry),
         false,
         false,
+        true,
     );
 
     context.preview_windows.borrow_mut().insert(
         artifact.capture_id.clone(),
         PreviewWindowRuntime {
             window: build.window,
+            selection_outline_window: None,
             shell: build.shell,
             preview_surface: build.preview_surface,
             controls: build.controls_revealer,
@@ -586,5 +610,25 @@ mod tests {
     fn preview_shortcut_target_ignores_non_preview_actions() {
         assert_eq!(preview_shortcut_target(ShortcutAction::EditorSave), None);
         assert_eq!(preview_shortcut_target(ShortcutAction::DialogConfirm), None);
+    }
+
+    #[test]
+    fn preview_primary_click_outcome_focuses_on_single_click() {
+        assert_eq!(
+            preview_primary_click_outcome(1),
+            PreviewPrimaryClickOutcome::Focus
+        );
+    }
+
+    #[test]
+    fn preview_primary_click_outcome_opens_editor_on_double_click() {
+        assert_eq!(
+            preview_primary_click_outcome(2),
+            PreviewPrimaryClickOutcome::Edit
+        );
+        assert_eq!(
+            preview_primary_click_outcome(3),
+            PreviewPrimaryClickOutcome::Edit
+        );
     }
 }
