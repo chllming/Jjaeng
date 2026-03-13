@@ -158,6 +158,12 @@ impl StartupConfig {
                         }
                     }
                 }
+                _ if arg.as_ref().starts_with("--record-system=") => {
+                    if let Some(request) = recording_request.as_mut() {
+                        request.options.audio.system_device =
+                            parse_key_value(arg.as_ref()).map(str::to_string);
+                    }
+                }
                 _ if arg.as_ref().starts_with("--record-mic=") => {
                     if let Some(request) = recording_request.as_mut() {
                         request.options.audio.microphone_device =
@@ -191,6 +197,7 @@ fn default_recording_request(app_config: &AppConfig, target: RecordingTarget) ->
     if let Some(audio_mode) = app_config.recording_audio_mode {
         request.options.audio.mode = audio_mode;
     }
+    request.options.audio.system_device = app_config.recording_system_device.clone();
     request.options.audio.microphone_device = app_config.recording_mic_device.clone();
     request
 }

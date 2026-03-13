@@ -58,6 +58,8 @@ pub struct AudioConfig {
     #[serde(default)]
     pub mode: AudioMode,
     #[serde(default)]
+    pub system_device: Option<String>,
+    #[serde(default)]
     pub microphone_device: Option<String>,
 }
 
@@ -180,6 +182,7 @@ pub struct RecordingHandle {
     pub recording_id: String,
     pub output_path: PathBuf,
     pub started_at: u64,
+    pub target: RecordingTarget,
     pub geometry: RecordGeometry,
     pub options: RecordingOptions,
 }
@@ -323,23 +326,7 @@ pub fn resume_recording(handle: &RecordingHandle) -> Result<(), RecordError> {
 }
 
 pub fn list_microphone_sources() -> Result<Vec<AudioSource>, RecordError> {
-    let output = Command::new("pactl")
-        .args(["list", "short", "sources"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .map_err(|source| RecordError::SpawnFailed {
-            command: "pactl".to_string(),
-            source,
-        })?;
-    if !output.status.success() {
-        return Err(RecordError::CommandFailed {
-            command: "pactl".to_string(),
-            message: format!("exit status {:?}", output.status.code()),
-        });
-    }
-
-    Ok(String::from_utf8_lossy(&output.stdout)
+    Ok(list_pactl_sources()?
         .lines()
         .filter_map(parse_pactl_source)
         .filter(|source| !source.name.contains(".monitor"))
@@ -359,6 +346,28 @@ pub fn default_microphone_source() -> Option<String> {
 
     let source = String::from_utf8_lossy(&output.stdout).trim().to_string();
     (!source.is_empty() && !source.contains(".monitor")).then_some(source)
+}
+
+pub fn list_system_audio_sources() -> Result<Vec<AudioSource>, RecordError> {
+    Ok(list_pactl_sources()?
+        .lines()
+        .filter_map(parse_pactl_source)
+        .filter(|source| source.name.contains(".monitor"))
+        .collect())
+}
+
+pub fn default_system_audio_source() -> Option<String> {
+    let output = Command::new("pactl")
+        .arg("get-default-sink")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    default_system_audio_source_from_sink_name(String::from_utf8_lossy(&output.stdout).trim())
 }
 
 pub fn resolve_recording_selection(
@@ -433,6 +442,7 @@ pub fn start_recording_with_selection<B: RecordBackend>(
                 recording_id,
                 output_path,
                 started_at,
+                target: request.target,
                 geometry: *geometry,
                 options: request.options.clone(),
             })
@@ -463,6 +473,7 @@ pub fn start_recording_with_selection<B: RecordBackend>(
                 recording_id,
                 output_path,
                 started_at,
+                target: request.target,
                 geometry: *geometry,
                 options: request.options.clone(),
             })
@@ -626,9 +637,25 @@ fn resolve_recording_options(
     };
 
     match normalized_audio_mode(options.audio.mode) {
-        AudioMode::Off | AudioMode::Desktop => {}
+        AudioMode::Off => {}
+        AudioMode::Desktop => {
+            resolved.audio_device = options
+                .audio
+                .system_device
+                .clone()
+                .or_else(default_system_audio_source);
+            if resolved.audio_device.is_none() {
+                return Err(RecordError::UnsupportedAudioMode(
+                    "desktop mode requires a system audio source".to_string(),
+                ));
+            }
+        }
         AudioMode::Microphone => {
-            resolved.audio_device = options.audio.microphone_device.clone();
+            resolved.audio_device = options
+                .audio
+                .microphone_device
+                .clone()
+                .or_else(default_microphone_source);
             if resolved.audio_device.is_none() {
                 return Err(RecordError::UnsupportedAudioMode(
                     "microphone mode requires a microphone device".to_string(),
@@ -676,6 +703,31 @@ fn normalized_audio_mode(mode: AudioMode) -> AudioMode {
         AudioMode::Both => AudioMode::Desktop,
         other => other,
     }
+}
+
+fn list_pactl_sources() -> Result<String, RecordError> {
+    let output = Command::new("pactl")
+        .args(["list", "short", "sources"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .map_err(|source| RecordError::SpawnFailed {
+            command: "pactl".to_string(),
+            source,
+        })?;
+    if !output.status.success() {
+        return Err(RecordError::CommandFailed {
+            command: "pactl".to_string(),
+            message: format!("exit status {:?}", output.status.code()),
+        });
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+fn default_system_audio_source_from_sink_name(sink_name: &str) -> Option<String> {
+    let trimmed = sink_name.trim();
+    (!trimmed.is_empty()).then(|| format!("{trimmed}.monitor"))
 }
 
 fn scale_resolution(
@@ -924,6 +976,7 @@ mod tests {
             &RecordingOptions {
                 audio: AudioConfig {
                     mode: AudioMode::Both,
+                    system_device: Some("alsa_output.default.monitor".into()),
                     microphone_device: Some("mic".into()),
                 },
                 ..RecordingOptions::default()
@@ -933,12 +986,24 @@ mod tests {
         )
         .expect("both audio should normalize");
         assert!(resolved.audio_enabled);
-        assert_eq!(resolved.audio_device, None);
+        assert_eq!(
+            resolved.audio_device,
+            Some("alsa_output.default.monitor".to_string())
+        );
     }
 
     #[test]
     fn recording_backend_requirement_message_mentions_backend() {
         assert!(recording_backend_requirement_message().contains(RECORDING_BACKEND_COMMAND));
+    }
+
+    #[test]
+    fn default_system_audio_source_from_sink_name_appends_monitor_suffix() {
+        assert_eq!(
+            default_system_audio_source_from_sink_name("alsa_output.default"),
+            Some("alsa_output.default.monitor".to_string())
+        );
+        assert_eq!(default_system_audio_source_from_sink_name("  "), None);
     }
 
     #[test]

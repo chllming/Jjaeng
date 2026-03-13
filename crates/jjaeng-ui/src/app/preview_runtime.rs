@@ -289,19 +289,13 @@ fn build_preview_quick_action_button(
 }
 
 fn build_preview_controls(context: &PreviewRenderContext) -> PreviewControlsBuild {
-    let controls_layout = GtkBox::new(Orientation::Vertical, 0);
-    controls_layout.set_hexpand(true);
-    controls_layout.set_vexpand(true);
+    let controls_layout = GtkBox::new(Orientation::Horizontal, context.style_tokens.spacing_4);
+    controls_layout.set_halign(Align::End);
+    controls_layout.set_valign(Align::Start);
     controls_layout.set_margin_top(context.style_tokens.spacing_16);
-    controls_layout.set_margin_bottom(context.style_tokens.spacing_16);
-    controls_layout.set_margin_start(context.style_tokens.spacing_16);
     controls_layout.set_margin_end(context.style_tokens.spacing_16);
-
-    let top_controls_wrap = GtkBox::new(Orientation::Horizontal, context.style_tokens.spacing_4);
-    top_controls_wrap.set_halign(Align::End);
-    top_controls_wrap.set_valign(Align::Start);
-    top_controls_wrap.add_css_class("preview-top-controls");
-    top_controls_wrap.add_css_class("preview-action-group");
+    controls_layout.add_css_class("preview-top-controls");
+    controls_layout.add_css_class("preview-action-group");
 
     let quick_save_button = build_preview_quick_action_button(
         "Save",
@@ -316,21 +310,15 @@ fn build_preview_controls(context: &PreviewRenderContext) -> PreviewControlsBuil
         false,
     );
 
-    top_controls_wrap.append(&quick_save_button);
-    top_controls_wrap.append(&quick_copy_button);
-
-    let controls_spacer = GtkBox::new(Orientation::Vertical, 0);
-    controls_spacer.set_vexpand(true);
-
-    controls_layout.append(&top_controls_wrap);
-    controls_layout.append(&controls_spacer);
+    controls_layout.append(&quick_save_button);
+    controls_layout.append(&quick_copy_button);
 
     let controls_revealer = Revealer::new();
     controls_revealer.add_css_class("preview-controls-revealer");
     controls_revealer.set_transition_duration(context.motion_hover_ms);
     controls_revealer.set_transition_type(RevealerTransitionType::Crossfade);
-    controls_revealer.set_halign(Align::Fill);
-    controls_revealer.set_valign(Align::Fill);
+    controls_revealer.set_halign(Align::End);
+    controls_revealer.set_valign(Align::Start);
     controls_revealer.set_child(Some(&controls_layout));
     controls_revealer.set_reveal_child(true);
 

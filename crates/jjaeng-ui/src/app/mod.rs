@@ -42,6 +42,7 @@ mod layout;
 mod lifecycle;
 mod ocr_support;
 mod preview_runtime;
+mod recording_controls;
 mod recording_prompt;
 mod recording_result;
 mod runtime_css;
@@ -659,6 +660,30 @@ fn should_restore_active_recording_on_stop_error(err: &recording::RecordError) -
         )
 }
 
+fn recording_selection_from_handle(handle: &recording::RecordingHandle) -> RecordingSelection {
+    let geometry = handle.geometry;
+    match handle.target {
+        recording::RecordingTarget::Fullscreen => RecordingSelection::Fullscreen {
+            monitor_name: "focused".to_string(),
+            geometry,
+        },
+        recording::RecordingTarget::Region => RecordingSelection::Region {
+            geometry_string: format!(
+                "{},{} {}x{}",
+                geometry.x, geometry.y, geometry.width, geometry.height
+            ),
+            geometry,
+        },
+        recording::RecordingTarget::Window => RecordingSelection::Window {
+            geometry_string: format!(
+                "{},{} {}x{}",
+                geometry.x, geometry.y, geometry.width, geometry.height
+            ),
+            geometry,
+        },
+    }
+}
+
 pub struct App {
     machine: StateMachine,
 }
@@ -898,6 +923,7 @@ impl App {
                 audio_mode: app_config_for_activate
                     .recording_audio_mode
                     .unwrap_or(AudioMode::Off),
+                system_device: app_config_for_activate.recording_system_device.clone(),
                 microphone_device: app_config_for_activate.recording_mic_device.clone(),
             };
             let launchpad = build_launchpad_ui(
@@ -1148,7 +1174,10 @@ impl App {
                 })
             };
 
+            let stop_recording_slot = Rc::new(RefCell::new(None::<Rc<dyn Fn()>>));
+            let pause_recording_slot = Rc::new(RefCell::new(None::<Rc<dyn Fn()>>));
             let begin_recording: Rc<dyn Fn(RecordingRequest, Option<RecordingSelection>, bool)> = {
+                let app = app_for_preview.clone();
                 let machine = machine_for_activate.clone();
                 let status_log = status_log_for_activate.clone();
                 let recording_runtime = recording_runtime.clone();
@@ -1156,6 +1185,8 @@ impl App {
                 let recording_result = recording_result.clone();
                 let recording_flow_pending = recording_flow_pending.clone();
                 let render_handle = render_handle.clone();
+                let pause_recording_slot = pause_recording_slot.clone();
+                let stop_recording_slot = stop_recording_slot.clone();
                 Rc::new(
                     move |request: RecordingRequest,
                           selection: Option<RecordingSelection>,
@@ -1224,12 +1255,20 @@ impl App {
                         let recording_flow_pending = recording_flow_pending.clone();
                         let render_handle = render_handle.clone();
                         let target = request.target;
+                        let request_for_start = request.clone();
+                        let request_for_prompt = request.clone();
+                        let prompt_app = app.clone();
+                        let pause_recording_slot_for_prompt = pause_recording_slot.clone();
+                        let stop_recording_slot_for_prompt = stop_recording_slot.clone();
                         spawn_worker_action(
                             move || match selection.as_ref() {
                                 Some(selection) => {
-                                    recording::start_recording_selected(&request, selection)
+                                    recording::start_recording_selected(
+                                        &request_for_start,
+                                        selection,
+                                    )
                                 }
-                                None => recording::start_recording(&request),
+                                None => recording::start_recording(&request_for_start),
                             },
                             move |result| {
                                 match result {
@@ -1276,6 +1315,64 @@ impl App {
                                                     paused_total_ms: 0,
                                                 },
                                             );
+                                            if !preserve_prompt {
+                                                let selection = {
+                                                    let active_slot =
+                                                        recording_runtime.active.borrow();
+                                                    let Some(active) = active_slot.as_ref() else {
+                                                        unreachable!(
+                                                            "active recording must exist after start"
+                                                        );
+                                                    };
+                                                    recording_selection_from_handle(&active.handle)
+                                                };
+                                                let source_availability =
+                                                    current_recording_source_availability();
+                                                let on_start: Rc<
+                                                    dyn Fn(RecordingRequest, RecordingSelection),
+                                                > = Rc::new(|_, _| {});
+                                                let on_cancel: Rc<dyn Fn()> = Rc::new(|| {});
+                                                let on_pause_toggle: Rc<dyn Fn()> = {
+                                                    let pause_recording_slot =
+                                                        pause_recording_slot_for_prompt.clone();
+                                                    Rc::new(move || {
+                                                        if let Some(pause_recording) =
+                                                            pause_recording_slot.borrow().as_ref()
+                                                        {
+                                                            (pause_recording.as_ref())();
+                                                        }
+                                                    })
+                                                };
+                                                let on_stop: Rc<dyn Fn()> = {
+                                                    let stop_recording_slot =
+                                                        stop_recording_slot_for_prompt.clone();
+                                                    Rc::new(move || {
+                                                        if let Some(stop_recording) =
+                                                            stop_recording_slot.borrow().as_ref()
+                                                        {
+                                                            (stop_recording.as_ref())();
+                                                        }
+                                                    })
+                                                };
+                                                present_recording_prompt(
+                                                    &prompt_app,
+                                                    style_tokens,
+                                                    &recording_prompt,
+                                                    &request_for_prompt,
+                                                    &selection,
+                                                    &source_availability,
+                                                    &on_start,
+                                                    &on_cancel,
+                                                    &on_pause_toggle,
+                                                    &on_stop,
+                                                );
+                                                sync_recording_prompt(
+                                                    &recording_prompt,
+                                                    true,
+                                                    false,
+                                                    0,
+                                                );
+                                            }
                                             *status_log.borrow_mut() =
                                                 format!("{target:?} recording active");
                                             jjaeng_core::notification::send("Recording started");
@@ -1374,7 +1471,9 @@ impl App {
                     }
                 })
             };
-            let stop_recording_slot = Rc::new(RefCell::new(None::<Rc<dyn Fn()>>));
+            pause_recording_slot
+                .borrow_mut()
+                .replace(pause_recording_toggle.clone());
             let prompt_recording: Rc<dyn Fn(RecordingRequest)> = {
                 let app = app_for_preview.clone();
                 let machine = machine_for_activate.clone();
@@ -1443,8 +1542,8 @@ impl App {
                                     );
                                     *status_log.borrow_mut() =
                                         "review recording settings".to_string();
-                                    let microphone_sources =
-                                        recording::list_microphone_sources().unwrap_or_default();
+                                    let source_availability =
+                                        current_recording_source_availability();
                                     let confirm: Rc<
                                         dyn Fn(RecordingRequest, RecordingSelection),
                                     > = {
@@ -1489,7 +1588,7 @@ impl App {
                                         &recording_prompt,
                                         &request,
                                         &selection,
-                                        &microphone_sources,
+                                        &source_availability,
                                         &confirm,
                                         &cancel,
                                         &pause_recording_toggle,
@@ -1888,6 +1987,7 @@ impl App {
                 &launchpad_actions,
                 &open_history_window,
                 &start_recording,
+                &pause_recording_toggle,
                 &stop_recording,
                 &render,
             );

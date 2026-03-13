@@ -2,7 +2,7 @@ use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use crate::ui::StyleTokens;
+use crate::ui::{icon_button, StyleTokens};
 use gtk4::prelude::*;
 use gtk4::{
     Align, Application, ApplicationWindow, Box as GtkBox, Button, Frame, Label, Orientation,
@@ -158,21 +158,35 @@ pub(super) fn present_recording_result(
     thumbnail.set_vexpand(true);
     thumbnail_frame.set_child(Some(&thumbnail));
 
-    let button_row = GtkBox::new(Orientation::Horizontal, style_tokens.spacing_8);
+    let button_row = GtkBox::new(Orientation::Horizontal, style_tokens.spacing_4);
     button_row.add_css_class("recording-result-button-row");
-    button_row.set_homogeneous(true);
+    button_row.set_halign(Align::End);
 
-    let save_button = Button::with_label("Save");
-    save_button.add_css_class("recording-prompt-button");
-    save_button.add_css_class("recording-prompt-button-primary");
+    let save_button = icon_button(
+        "save-symbolic",
+        "Save recording",
+        style_tokens.control_size as i32,
+        &["recording-bar-action", "recording-bar-record"],
+    );
     save_button.set_sensitive(artifact.saved_path.is_none());
-    let copy_button = Button::with_label("Copy Path");
-    copy_button.add_css_class("recording-prompt-button");
-    let open_button = Button::with_label("Open");
-    open_button.add_css_class("recording-prompt-button");
-    let close_button = Button::with_label("Close");
-    close_button.add_css_class("recording-prompt-button");
-    close_button.add_css_class("recording-prompt-button-danger");
+    let copy_button = icon_button(
+        "copy-symbolic",
+        "Copy recording path",
+        style_tokens.control_size as i32,
+        &["recording-bar-action"],
+    );
+    let open_button = icon_button(
+        "arrow-up-right-symbolic",
+        "Open recording",
+        style_tokens.control_size as i32,
+        &["recording-bar-action"],
+    );
+    let close_button = icon_button(
+        "x-symbolic",
+        "Close recording preview",
+        style_tokens.control_size as i32,
+        &["recording-bar-action", "recording-bar-stop"],
+    );
 
     button_row.append(&save_button);
     button_row.append(&copy_button);

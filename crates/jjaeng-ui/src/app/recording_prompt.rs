@@ -1,27 +1,31 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use crate::ui::StyleTokens;
+use crate::ui::{icon_button, icon_toggle_button, StyleTokens};
 use gtk4::gdk::Key;
 use gtk4::prelude::*;
 use gtk4::{
     Align, Application, ApplicationWindow, Box as GtkBox, Button, ComboBoxText, EventControllerKey,
-    Frame, Label, Orientation,
+    Frame, Image, Label, Orientation, ToggleButton,
 };
 use jjaeng_core::identity::APP_CSS_ROOT;
-use jjaeng_core::recording::{
-    self, AudioMode, AudioSource, RecordingEncodingPreset, RecordingRequest, RecordingSelection,
-    RecordingSize, RecordingTarget,
-};
+use jjaeng_core::recording::{RecordingRequest, RecordingSelection, RecordingTarget};
 
 use super::hypr::request_window_floating_with_geometry;
 use super::layout::bottom_centered_window_geometry_for_point;
+use super::recording_controls::{
+    apply_audio_config_to_controls, connect_audio_toggle_controls,
+    load_recording_source_availability, populate_microphone_combo,
+    populate_recording_encoding_combo, populate_recording_size_combo, populate_system_audio_combo,
+    recording_audio_config_from_controls, recording_encoding_from_combo, recording_size_from_combo,
+    sync_audio_controls, RecordingSourceAvailability,
+};
 use super::window_state::RuntimeWindowGeometry;
 
 const RECORDING_PROMPT_TITLE: &str = "Jjaeng Recording Controls";
 const RECORDING_SELECTION_TITLE: &str = "Jjaeng Recording Selection";
-const RECORDING_PROMPT_WIDTH: i32 = 640;
-const RECORDING_PROMPT_HEIGHT: i32 = 320;
+const RECORDING_PROMPT_WIDTH: i32 = 920;
+const RECORDING_PROMPT_HEIGHT: i32 = 188;
 
 #[derive(Clone)]
 pub(super) struct RecordingPromptRuntime {
@@ -30,14 +34,17 @@ pub(super) struct RecordingPromptRuntime {
     close_guard: Rc<Cell<bool>>,
     active: Rc<Cell<bool>>,
     starting: Rc<Cell<bool>>,
+    system_available: bool,
+    microphone_available: bool,
     status_label: Label,
     timer_label: Label,
     hint_label: Label,
     size_combo: ComboBoxText,
     encoding_combo: ComboBoxText,
-    audio_combo: ComboBoxText,
+    system_toggle: ToggleButton,
+    system_combo: ComboBoxText,
+    mic_toggle: ToggleButton,
     mic_combo: ComboBoxText,
-    mic_row: GtkBox,
     start_button: Button,
     pause_button: Button,
     stop_button: Button,
@@ -54,23 +61,24 @@ impl RecordingPromptRuntime {
     }
 
     fn set_controls_sensitive(&self, sensitive: bool) {
-        self.size_combo
-            .set_sensitive(sensitive && !self.active.get() && !self.starting.get());
-        self.encoding_combo
-            .set_sensitive(sensitive && !self.active.get() && !self.starting.get());
-        self.audio_combo
-            .set_sensitive(sensitive && !self.active.get() && !self.starting.get());
-        self.mic_combo.set_sensitive(
-            sensitive && !self.active.get() && !self.starting.get() && self.mic_row.is_visible(),
+        let editable = sensitive && !self.active.get() && !self.starting.get();
+        self.size_combo.set_sensitive(editable);
+        self.encoding_combo.set_sensitive(editable);
+        sync_audio_controls(
+            &self.system_toggle,
+            &self.system_combo,
+            self.system_available,
+            &self.mic_toggle,
+            &self.mic_combo,
+            self.microphone_available,
+            editable,
         );
-        self.start_button
-            .set_sensitive(sensitive && !self.active.get() && !self.starting.get());
+        self.start_button.set_sensitive(editable);
         self.pause_button
             .set_sensitive(sensitive && self.active.get() && !self.starting.get());
         self.stop_button
             .set_sensitive(sensitive && self.active.get() && !self.starting.get());
-        self.cancel_button
-            .set_sensitive(sensitive && !self.active.get() && !self.starting.get());
+        self.cancel_button.set_sensitive(editable);
     }
 
     fn set_starting(&self) {
@@ -83,7 +91,7 @@ impl RecordingPromptRuntime {
         self.starting.set(false);
         self.active.set(false);
         self.status_label.set_text(message);
-        self.hint_label.set_text("Enter start  •  Esc cancel");
+        self.hint_label.set_text("Enter record  •  Esc cancel");
         self.start_button.set_visible(true);
         self.cancel_button.set_visible(true);
         self.pause_button.set_visible(false);
@@ -99,8 +107,15 @@ impl RecordingPromptRuntime {
         self.cancel_button.set_visible(!active);
         self.pause_button.set_visible(active);
         self.stop_button.set_visible(active);
-        self.pause_button
-            .set_label(if paused { "Resume" } else { "Pause" });
+        if paused {
+            self.pause_button
+                .set_icon_name("media-playback-start-symbolic");
+            self.pause_button.set_tooltip_text(Some("Resume recording"));
+        } else {
+            self.pause_button
+                .set_icon_name("media-playback-pause-symbolic");
+            self.pause_button.set_tooltip_text(Some("Pause recording"));
+        }
         self.status_label.set_text(if active {
             if paused {
                 "Recording paused"
@@ -108,12 +123,12 @@ impl RecordingPromptRuntime {
                 "Recording live"
             }
         } else {
-            "Review settings and press Start"
+            "Review settings and press record"
         });
         self.hint_label.set_text(if active {
             "Space pause/resume  •  Esc stop"
         } else {
-            "Enter start  •  Esc cancel"
+            "Enter record  •  Esc cancel"
         });
         self.set_controls_sensitive(true);
     }
@@ -168,7 +183,7 @@ pub(super) fn present_recording_prompt(
     recording_prompt: &Rc<RefCell<Option<RecordingPromptRuntime>>>,
     request: &RecordingRequest,
     selection: &RecordingSelection,
-    microphone_sources: &[AudioSource],
+    source_availability: &RecordingSourceAvailability,
     on_start: &Rc<dyn Fn(RecordingRequest, RecordingSelection)>,
     on_cancel: &Rc<dyn Fn()>,
     on_pause_toggle: &Rc<dyn Fn()>,
@@ -177,7 +192,8 @@ pub(super) fn present_recording_prompt(
     tracing::debug!(
         target = ?selection.target(),
         selection = ?selection,
-        microphone_source_count = microphone_sources.len(),
+        system_source_count = source_availability.system_sources.len(),
+        microphone_source_count = source_availability.microphone_sources.len(),
         "presenting recording prompt"
     );
     dismiss_recording_prompt(recording_prompt);
@@ -209,145 +225,161 @@ pub(super) fn present_recording_prompt(
     prompt_window.add_css_class(APP_CSS_ROOT);
     prompt_window.add_css_class("recording-prompt-window");
 
-    let root = GtkBox::new(Orientation::Vertical, style_tokens.spacing_12);
+    let root = GtkBox::new(Orientation::Vertical, style_tokens.spacing_8);
     root.add_css_class("recording-prompt-surface");
     root.set_margin_top(style_tokens.spacing_12);
     root.set_margin_bottom(style_tokens.spacing_12);
     root.set_margin_start(style_tokens.spacing_12);
     root.set_margin_end(style_tokens.spacing_12);
 
-    let title_label = Label::new(Some("Video Recording"));
-    title_label.add_css_class("recording-prompt-title");
-    title_label.set_halign(Align::Start);
-    title_label.set_xalign(0.0);
-
-    let timer_label = Label::new(Some("00:00"));
-    timer_label.add_css_class("recording-prompt-timer");
-    timer_label.set_halign(Align::End);
-    timer_label.set_xalign(1.0);
-    timer_label.set_hexpand(true);
-
     let title_row = GtkBox::new(Orientation::Horizontal, style_tokens.spacing_8);
-    title_row.append(&title_label);
-    title_row.append(&timer_label);
+    title_row.add_css_class("recording-prompt-header");
 
-    let meta_label = Label::new(Some(&selection_label(selection)));
-    meta_label.add_css_class("recording-prompt-meta");
-    meta_label.set_halign(Align::Start);
-    meta_label.set_xalign(0.0);
-    meta_label.set_wrap(true);
-    meta_label.set_wrap_mode(gtk4::pango::WrapMode::WordChar);
-    meta_label.set_max_width_chars(48);
+    let target_chip = recording_target_chip(selection);
+    target_chip.set_hexpand(false);
 
-    let status_label = Label::new(Some("Review settings and press Start"));
+    let status_label = Label::new(Some("Review settings and press record"));
     status_label.add_css_class("recording-prompt-status");
     status_label.set_halign(Align::Start);
     status_label.set_xalign(0.0);
-    status_label.set_wrap(true);
-    status_label.set_wrap_mode(gtk4::pango::WrapMode::WordChar);
-    status_label.set_max_width_chars(48);
+    status_label.set_hexpand(true);
+
+    let timer_label = Label::new(Some("00:00"));
+    timer_label.add_css_class("recording-bar-timer");
+    timer_label.set_halign(Align::End);
+    timer_label.set_xalign(1.0);
+
+    title_row.append(&target_chip);
+    title_row.append(&status_label);
+    title_row.append(&timer_label);
 
     let size_combo = ComboBoxText::new();
-    size_combo.append(Some("native"), "Native");
-    size_combo.append(Some("half"), "Half");
-    size_combo.append(Some("fit1080p"), "1080p");
-    size_combo.append(Some("fit720p"), "720p");
-    size_combo.set_active_id(Some(match request.options.size {
-        RecordingSize::Native => "native",
-        RecordingSize::Half => "half",
-        RecordingSize::Fit1080p => "fit1080p",
-        RecordingSize::Fit720p => "fit720p",
-    }));
+    populate_recording_size_combo(&size_combo, request.options.size);
+    size_combo.set_size_request(96, -1);
 
     let encoding_combo = ComboBoxText::new();
-    encoding_combo.append(Some("standard"), "Standard");
-    encoding_combo.append(Some("quality"), "High Quality");
-    encoding_combo.append(Some("small"), "Small File");
-    encoding_combo.set_active_id(Some(match request.options.encoding {
-        RecordingEncodingPreset::Standard => "standard",
-        RecordingEncodingPreset::HighQuality => "quality",
-        RecordingEncodingPreset::SmallFile => "small",
-    }));
+    populate_recording_encoding_combo(&encoding_combo, request.options.encoding);
+    encoding_combo.set_size_request(92, -1);
 
-    let audio_combo = ComboBoxText::new();
-    audio_combo.append(Some("off"), "No Audio");
-    audio_combo.append(Some("desktop"), "Desktop");
-    audio_combo.append(Some("microphone"), "Mic");
-    audio_combo.set_active_id(Some(match request.options.audio.mode {
-        AudioMode::Desktop => "desktop",
-        AudioMode::Microphone => "microphone",
-        AudioMode::Off => "off",
-        AudioMode::Both => "desktop",
-    }));
+    let system_toggle = icon_toggle_button(
+        "audio-volume-high-symbolic",
+        "Capture system audio",
+        style_tokens.control_size as i32,
+        &["recording-bar-toggle"],
+    );
+    let system_combo = ComboBoxText::new();
+    populate_system_audio_combo(
+        &system_combo,
+        &source_availability.system_sources,
+        request.options.audio.system_device.as_deref(),
+    );
+    system_combo.set_size_request(196, -1);
 
-    let controls_column = GtkBox::new(Orientation::Vertical, style_tokens.spacing_8);
-    controls_column.add_css_class("recording-prompt-controls");
-    controls_column.append(&control_row(style_tokens, "Size", &size_combo));
-    controls_column.append(&control_row(style_tokens, "Encoding", &encoding_combo));
-    controls_column.append(&control_row(style_tokens, "Audio", &audio_combo));
-
+    let mic_toggle = icon_toggle_button(
+        "audio-input-microphone-symbolic",
+        "Capture microphone audio",
+        style_tokens.control_size as i32,
+        &["recording-bar-toggle"],
+    );
     let mic_combo = ComboBoxText::new();
     populate_microphone_combo(
         &mic_combo,
-        microphone_sources,
+        &source_availability.microphone_sources,
         request.options.audio.microphone_device.as_deref(),
     );
-    mic_combo.set_hexpand(true);
+    mic_combo.set_size_request(196, -1);
 
-    let mic_row = control_row(style_tokens, "Microphone", &mic_combo);
-    mic_row.add_css_class("recording-prompt-mic-row");
-    mic_row.set_visible(matches!(request.options.audio.mode, AudioMode::Microphone));
+    let system_available = !source_availability.system_sources.is_empty();
+    let microphone_available = !source_availability.microphone_sources.is_empty();
+    connect_audio_toggle_controls(
+        &system_toggle,
+        &system_combo,
+        system_available,
+        &mic_toggle,
+        &mic_combo,
+        microphone_available,
+    );
+    apply_audio_config_to_controls(
+        &system_toggle,
+        &system_combo,
+        system_available,
+        &mic_toggle,
+        &mic_combo,
+        microphone_available,
+        &request.options.audio,
+    );
 
-    {
-        let mic_row = mic_row.clone();
-        let mic_combo = mic_combo.clone();
-        audio_combo.connect_changed(move |combo| {
-            let visible = matches!(combo.active_id().as_deref(), Some("microphone"));
-            mic_row.set_visible(visible);
-            mic_combo.set_sensitive(visible);
-        });
-    }
-
-    let hint_label = Label::new(Some("Enter start  •  Esc cancel"));
-    hint_label.add_css_class("recording-prompt-hint");
-    hint_label.set_halign(Align::Start);
-    hint_label.set_xalign(0.0);
-    hint_label.set_wrap(true);
-    hint_label.set_wrap_mode(gtk4::pango::WrapMode::WordChar);
-    hint_label.set_max_width_chars(48);
-
-    let cancel_button = Button::with_label("Cancel");
-    cancel_button.add_css_class("recording-prompt-button");
-    cancel_button.set_hexpand(true);
-    let start_button = Button::with_label("Start");
-    start_button.add_css_class("recording-prompt-button");
-    start_button.add_css_class("recording-prompt-button-primary");
-    start_button.set_hexpand(true);
-    let pause_button = Button::with_label("Pause");
-    pause_button.add_css_class("recording-prompt-button");
-    pause_button.set_hexpand(true);
-    let stop_button = Button::with_label("Stop");
-    stop_button.add_css_class("recording-prompt-button");
-    stop_button.add_css_class("recording-prompt-button-danger");
-    stop_button.set_hexpand(true);
+    let start_button = icon_button(
+        "media-record-symbolic",
+        "Start recording",
+        style_tokens.control_size as i32,
+        &["recording-bar-action", "recording-bar-record"],
+    );
+    let pause_button = icon_button(
+        "media-playback-pause-symbolic",
+        "Pause recording",
+        style_tokens.control_size as i32,
+        &["recording-bar-action"],
+    );
+    let stop_button = icon_button(
+        "media-playback-stop-symbolic",
+        "Stop recording",
+        style_tokens.control_size as i32,
+        &["recording-bar-action", "recording-bar-stop"],
+    );
+    let cancel_button = icon_button(
+        "x-symbolic",
+        "Cancel recording",
+        style_tokens.control_size as i32,
+        &["recording-bar-action"],
+    );
     pause_button.set_visible(false);
     stop_button.set_visible(false);
 
-    let button_row = GtkBox::new(Orientation::Horizontal, style_tokens.spacing_8);
-    button_row.add_css_class("recording-prompt-button-row");
-    button_row.set_homogeneous(true);
-    button_row.append(&cancel_button);
-    button_row.append(&start_button);
-    button_row.append(&pause_button);
-    button_row.append(&stop_button);
+    let control_bar = GtkBox::new(Orientation::Horizontal, style_tokens.spacing_8);
+    control_bar.add_css_class("recording-prompt-bar");
+    control_bar.append(&recording_bar_combo_segment(
+        "move-up-right-symbolic",
+        "Scale",
+        &size_combo,
+    ));
+    control_bar.append(&recording_bar_toggle_segment(&system_toggle, &system_combo));
+    control_bar.append(&recording_bar_toggle_segment(&mic_toggle, &mic_combo));
+    control_bar.append(&recording_bar_combo_segment(
+        "preferences-system-symbolic",
+        "Quality",
+        &encoding_combo,
+    ));
+
+    let action_bar = GtkBox::new(Orientation::Horizontal, style_tokens.spacing_4);
+    action_bar.add_css_class("recording-bar-actions");
+    action_bar.append(&cancel_button);
+    action_bar.append(&start_button);
+    action_bar.append(&pause_button);
+    action_bar.append(&stop_button);
+    control_bar.append(&action_bar);
+
+    let hint_label = Label::new(Some("Enter record  •  Esc cancel"));
+    hint_label.add_css_class("recording-prompt-hint");
+    hint_label.set_halign(Align::Start);
+    hint_label.set_xalign(0.0);
+    hint_label.set_hexpand(true);
+
+    let source_hint_label = Label::new(source_availability.source_hint().as_deref());
+    source_hint_label.add_css_class("recording-prompt-hint");
+    source_hint_label.add_css_class("recording-prompt-source-hint");
+    source_hint_label.set_halign(Align::End);
+    source_hint_label.set_xalign(1.0);
+    source_hint_label.set_visible(source_availability.source_hint().is_some());
+
+    let footer_row = GtkBox::new(Orientation::Horizontal, style_tokens.spacing_8);
+    footer_row.add_css_class("recording-prompt-footer");
+    footer_row.append(&hint_label);
+    footer_row.append(&source_hint_label);
 
     root.append(&title_row);
-    root.append(&meta_label);
-    root.append(&status_label);
-    root.append(&controls_column);
-    root.append(&mic_row);
-    root.append(&hint_label);
-    root.append(&button_row);
+    root.append(&control_bar);
+    root.append(&footer_row);
     prompt_window.set_child(Some(&root));
     prompt_window.set_default_size(RECORDING_PROMPT_WIDTH, RECORDING_PROMPT_HEIGHT);
     prompt_window.set_size_request(RECORDING_PROMPT_WIDTH, RECORDING_PROMPT_HEIGHT);
@@ -378,7 +410,9 @@ pub(super) fn present_recording_prompt(
         let target = request.target;
         let size_combo = size_combo.clone();
         let encoding_combo = encoding_combo.clone();
-        let audio_combo = audio_combo.clone();
+        let system_toggle = system_toggle.clone();
+        let system_combo = system_combo.clone();
+        let mic_toggle = mic_toggle.clone();
         let mic_combo = mic_combo.clone();
         let selection = selection.clone();
         let on_start = on_start.clone();
@@ -388,7 +422,9 @@ pub(super) fn present_recording_prompt(
                     target,
                     &size_combo,
                     &encoding_combo,
-                    &audio_combo,
+                    &system_toggle,
+                    &system_combo,
+                    &mic_toggle,
                     &mic_combo,
                 ),
                 selection.clone(),
@@ -422,7 +458,9 @@ pub(super) fn present_recording_prompt(
         let active = active.clone();
         let size_combo = size_combo.clone();
         let encoding_combo = encoding_combo.clone();
-        let audio_combo = audio_combo.clone();
+        let system_toggle = system_toggle.clone();
+        let system_combo = system_combo.clone();
+        let mic_toggle = mic_toggle.clone();
         let mic_combo = mic_combo.clone();
         let selection = selection.clone();
         let on_start = on_start.clone();
@@ -445,7 +483,9 @@ pub(super) fn present_recording_prompt(
                         target,
                         &size_combo,
                         &encoding_combo,
-                        &audio_combo,
+                        &system_toggle,
+                        &system_combo,
+                        &mic_toggle,
                         &mic_combo,
                     ),
                     selection.clone(),
@@ -489,14 +529,17 @@ pub(super) fn present_recording_prompt(
         close_guard,
         active,
         starting,
+        system_available,
+        microphone_available,
         status_label,
         timer_label,
         hint_label,
         size_combo,
         encoding_combo,
-        audio_combo,
+        system_toggle,
+        system_combo,
+        mic_toggle,
         mic_combo,
-        mic_row,
         start_button,
         pause_button,
         stop_button,
@@ -504,6 +547,10 @@ pub(super) fn present_recording_prompt(
     };
     runtime.sync_state(false, false, 0);
     recording_prompt.borrow_mut().replace(runtime);
+}
+
+pub(super) fn current_recording_source_availability() -> RecordingSourceAvailability {
+    load_recording_source_availability()
 }
 
 fn build_selection_outline_window(
@@ -534,117 +581,80 @@ fn build_selection_outline_window(
     Some(window)
 }
 
-fn control_label(text: &str) -> Label {
-    let label = Label::new(Some(text));
-    label.add_css_class("recording-prompt-control-label");
+fn recording_target_chip(selection: &RecordingSelection) -> GtkBox {
+    let chip = GtkBox::new(Orientation::Horizontal, 6);
+    chip.add_css_class("recording-bar-chip");
+
+    let icon = Image::from_icon_name(recording_target_icon_name(selection.target()));
+    icon.set_pixel_size(16);
+
+    let label = Label::new(Some(&selection_label(selection)));
+    label.add_css_class("recording-bar-chip-label");
     label.set_halign(Align::Start);
     label.set_xalign(0.0);
-    label.set_width_chars(11);
-    label
+
+    chip.append(&icon);
+    chip.append(&label);
+    chip
 }
 
-fn control_row<W: IsA<gtk4::Widget>>(
-    style_tokens: StyleTokens,
-    label_text: &str,
-    control: &W,
-) -> GtkBox {
-    let row = GtkBox::new(Orientation::Horizontal, style_tokens.spacing_8);
-    row.add_css_class("recording-prompt-control-row");
-    control.set_hexpand(true);
-    row.append(&control_label(label_text));
-    row.append(control);
-    row
+fn recording_bar_toggle_segment(toggle: &ToggleButton, combo: &ComboBoxText) -> GtkBox {
+    let segment = GtkBox::new(Orientation::Horizontal, 6);
+    segment.add_css_class("recording-bar-segment");
+    combo.add_css_class("recording-bar-combo");
+    segment.append(toggle);
+    segment.append(combo);
+    segment
+}
+
+fn recording_bar_combo_segment(icon_name: &str, tooltip: &str, combo: &ComboBoxText) -> GtkBox {
+    let segment = GtkBox::new(Orientation::Horizontal, 6);
+    segment.add_css_class("recording-bar-segment");
+
+    let icon = Image::from_icon_name(icon_name);
+    icon.set_pixel_size(16);
+    icon.add_css_class("recording-bar-segment-icon");
+    icon.set_tooltip_text(Some(tooltip));
+
+    combo.add_css_class("recording-bar-combo");
+    segment.append(&icon);
+    segment.append(combo);
+    segment
+}
+
+fn recording_target_icon_name(target: RecordingTarget) -> &'static str {
+    match target {
+        RecordingTarget::Fullscreen => "view-fullscreen-symbolic",
+        RecordingTarget::Region => "crop-symbolic",
+        RecordingTarget::Window => "scan-symbolic",
+    }
 }
 
 fn selection_label(selection: &RecordingSelection) -> String {
     let geometry = selection.geometry();
     let target = match selection.target() {
-        RecordingTarget::Fullscreen => "Fullscreen",
+        RecordingTarget::Fullscreen => "Full",
         RecordingTarget::Region => "Region",
         RecordingTarget::Window => "Window",
     };
-    format!("{target} · {} x {}", geometry.width, geometry.height)
+    format!("{target} {} x {}", geometry.width, geometry.height)
 }
 
 fn recording_request_from_controls(
     target: RecordingTarget,
     size_combo: &ComboBoxText,
     encoding_combo: &ComboBoxText,
-    audio_combo: &ComboBoxText,
+    system_toggle: &ToggleButton,
+    system_combo: &ComboBoxText,
+    mic_toggle: &ToggleButton,
     mic_combo: &ComboBoxText,
 ) -> RecordingRequest {
     let mut request = RecordingRequest::new(target);
-    request.options.size = match size_combo.active_id().as_deref() {
-        Some("half") => RecordingSize::Half,
-        Some("fit1080p") => RecordingSize::Fit1080p,
-        Some("fit720p") => RecordingSize::Fit720p,
-        _ => RecordingSize::Native,
-    };
-    request.options.encoding = match encoding_combo.active_id().as_deref() {
-        Some("quality") => RecordingEncodingPreset::HighQuality,
-        Some("small") => RecordingEncodingPreset::SmallFile,
-        _ => RecordingEncodingPreset::Standard,
-    };
-    request.options.audio.mode = match audio_combo.active_id().as_deref() {
-        Some("desktop") => AudioMode::Desktop,
-        Some("microphone") => AudioMode::Microphone,
-        _ => AudioMode::Off,
-    };
-    request.options.audio.microphone_device =
-        if matches!(request.options.audio.mode, AudioMode::Microphone) {
-            sanitize_microphone_device(mic_combo.active_id().map(|value| value.to_string()))
-                .or_else(recording::default_microphone_source)
-        } else {
-            None
-        };
+    request.options.size = recording_size_from_combo(size_combo);
+    request.options.encoding = recording_encoding_from_combo(encoding_combo);
+    request.options.audio =
+        recording_audio_config_from_controls(system_toggle, system_combo, mic_toggle, mic_combo);
     request
-}
-
-fn sanitize_microphone_device(value: Option<String>) -> Option<String> {
-    value.and_then(|value| {
-        let trimmed = value.trim();
-        (!trimmed.is_empty()).then(|| trimmed.to_string())
-    })
-}
-
-fn populate_microphone_combo(
-    mic_combo: &ComboBoxText,
-    microphone_sources: &[AudioSource],
-    requested_device: Option<&str>,
-) {
-    for source in microphone_sources {
-        mic_combo.append(Some(&source.name), &audio_source_label(source));
-    }
-
-    let fallback_device = recording::default_microphone_source();
-    let selected_device = requested_device
-        .map(str::to_string)
-        .or(fallback_device)
-        .or_else(|| microphone_sources.first().map(|source| source.name.clone()));
-
-    if let Some(selected_device) = selected_device {
-        if !microphone_sources
-            .iter()
-            .any(|source| source.name == selected_device)
-        {
-            mic_combo.append(Some(&selected_device), &selected_device);
-        }
-        mic_combo.set_active_id(Some(&selected_device));
-    }
-
-    if mic_combo.active_id().is_none() {
-        mic_combo.append(Some(""), "No microphone sources detected");
-        mic_combo.set_active_id(Some(""));
-        mic_combo.set_sensitive(false);
-    }
-}
-
-fn audio_source_label(source: &AudioSource) -> String {
-    source
-        .name
-        .rsplit_once('.')
-        .map(|(_, label)| label.replace('-', " "))
-        .unwrap_or_else(|| source.name.clone())
 }
 
 fn format_elapsed(elapsed_ms: u64) -> String {
@@ -662,21 +672,6 @@ fn format_elapsed(elapsed_ms: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn sanitize_microphone_device_discards_blank_values() {
-        assert_eq!(sanitize_microphone_device(None), None);
-        assert_eq!(sanitize_microphone_device(Some(String::new())), None);
-        assert_eq!(sanitize_microphone_device(Some("   ".to_string())), None);
-    }
-
-    #[test]
-    fn sanitize_microphone_device_trims_selected_value() {
-        assert_eq!(
-            sanitize_microphone_device(Some("  alsa_input.usb-mic  ".to_string())),
-            Some("alsa_input.usb-mic".to_string())
-        );
-    }
 
     #[test]
     fn format_elapsed_switches_to_hours_after_sixty_minutes() {

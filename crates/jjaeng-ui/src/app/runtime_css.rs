@@ -541,21 +541,105 @@ frame.launchpad-panel {{
 frame.launchpad-panel > border {{
   border: none;
 }}
-box.launchpad-recording-actions-row button,
-box.launchpad-recording-field-row,
-box.launchpad-recording-mic-row {{
-  min-height: 32px;
-}}
-box.launchpad-recording-controls,
-box.launchpad-recording-summary {{
+box.launchpad-recording-bar,
+box.launchpad-recording-meta,
+box.recording-prompt-header,
+box.recording-prompt-bar,
+box.recording-prompt-footer,
+box.recording-bar-actions,
+box.recording-bar-segment {{
   min-width: 0;
 }}
-label.launchpad-recording-field-label {{
-  min-width: 72px;
+box.launchpad-recording-bar,
+box.recording-prompt-bar {{
+  min-height: 32px;
 }}
-box.launchpad-recording-field-row combobox,
-box.launchpad-recording-mic-row entry {{
-  min-width: 168px;
+box.recording-bar-segment {{
+  min-height: 32px;
+  padding: 0;
+}}
+image.recording-bar-segment-icon {{
+  opacity: 0.72;
+}}
+box.recording-bar-segment combobox,
+box.recording-bar-segment dropdown,
+box.recording-bar-segment > box {{
+  min-width: 0;
+}}
+box.recording-bar-segment combobox button,
+box.recording-bar-segment dropdown > button {{
+  min-width: 0;
+}}
+box.recording-bar-chip {{
+  border-radius: 0;
+  border: {history_inner_border_width}px solid alpha({text_color}, 0.16);
+  background: alpha({canvas_background}, {history_tile_alpha:.2});
+  padding: 0 {spacing_12}px;
+  min-height: 32px;
+}}
+label.recording-bar-chip-label,
+label.recording-meta-chip,
+label.recording-bar-timer {{
+  font-size: {history_meta_font_size}px;
+  font-weight: 650;
+}}
+label.recording-meta-chip,
+label.recording-bar-timer {{
+  border-radius: 0;
+  border: {history_inner_border_width}px solid alpha({text_color}, 0.16);
+  background: alpha({canvas_background}, {history_tile_alpha:.2});
+  padding: 0 {spacing_12}px;
+  min-height: 32px;
+}}
+label.recording-source-hint,
+label.recording-prompt-hint,
+label.recording-prompt-status {{
+  font-size: {history_meta_font_size}px;
+  opacity: 0.8;
+}}
+label.recording-source-hint {{
+  min-height: 32px;
+  padding: 6px 0 0 0;
+}}
+togglebutton.recording-bar-toggle:checked,
+togglebutton.recording-target-button:checked {{
+  background-image: linear-gradient(
+                      rgba(0, 0, 0, 0.20),
+                      rgba(0, 0, 0, 0.20)
+                    ),
+                    {accent_gradient};
+  color: {accent_text_color};
+  border-color: transparent;
+}}
+togglebutton.recording-bar-toggle:checked image,
+togglebutton.recording-target-button:checked image,
+togglebutton.recording-bar-toggle:checked:hover image,
+togglebutton.recording-target-button:checked:hover image,
+togglebutton.recording-bar-toggle:checked:active image,
+togglebutton.recording-target-button:checked:active image {{
+  color: {accent_text_color};
+}}
+button.recording-bar-record {{
+  background: rgba(255, 70, 70, 0.14);
+  color: rgba(255, 82, 82, 0.98);
+  border-color: rgba(255, 82, 82, 0.28);
+}}
+button.recording-bar-record:hover,
+button.recording-bar-record:active {{
+  background: rgba(255, 70, 70, 0.22);
+  color: rgba(255, 64, 64, 1.0);
+  border-color: rgba(255, 82, 82, 0.42);
+}}
+button.recording-bar-stop {{
+  background: rgba(255, 80, 80, 0.08);
+  color: rgba(255, 80, 80, 0.92);
+  border-color: rgba(255, 80, 80, 0.22);
+}}
+button.recording-bar-stop:hover,
+button.recording-bar-stop:active {{
+  background: rgba(255, 80, 80, 0.16);
+  color: rgba(255, 65, 65, 1.0);
+  border-color: rgba(255, 80, 80, 0.34);
 }}
 .launchpad-root button.launchpad-primary-button {{
   background-image: linear-gradient(
@@ -618,78 +702,6 @@ box.recording-prompt-surface {{
   font-family: {history_font_family};
   color: {text_color};
 }}
-label.recording-prompt-title {{
-  font-size: {history_base_font_size}px;
-  font-weight: 700;
-}}
-label.recording-prompt-timer {{
-  font-size: {history_meta_font_size}px;
-  font-weight: 700;
-  opacity: 0.92;
-}}
-label.recording-prompt-meta,
-label.recording-prompt-control-label {{
-  font-size: {history_meta_font_size}px;
-  opacity: 0.82;
-}}
-label.recording-prompt-status,
-label.recording-prompt-hint {{
-  font-size: {history_meta_font_size}px;
-  opacity: 0.82;
-}}
-box.recording-prompt-controls {{
-  min-width: 0;
-}}
-box.recording-prompt-control-row,
-box.recording-prompt-mic-row {{
-  min-height: 32px;
-}}
-label.recording-prompt-control-label {{
-  min-width: 88px;
-}}
-box.recording-prompt-control-row combobox,
-box.recording-prompt-mic-row combobox {{
-  min-width: 180px;
-}}
-button.recording-prompt-button {{
-  min-height: 32px;
-  border-radius: 0;
-}}
-box.recording-prompt-button-row button.recording-prompt-button {{
-  min-width: 0;
-}}
-button.recording-prompt-button-primary {{
-  background-image: linear-gradient(
-                      rgba(0, 0, 0, 0.20),
-                      rgba(0, 0, 0, 0.20)
-                    ),
-                    {accent_gradient};
-  color: {accent_text_color};
-  border-color: transparent;
-  font-weight: 600;
-}}
-button.recording-prompt-button-primary:hover,
-button.recording-prompt-button-primary:active {{
-  background-image: linear-gradient(
-                      rgba(0, 0, 0, 0.20),
-                      rgba(0, 0, 0, 0.20)
-                    ),
-                    {accent_gradient};
-  color: {accent_text_color};
-  border-color: transparent;
-}}
-button.recording-prompt-button-danger {{
-  background: rgba(255, 80, 80, 0.08);
-  color: rgba(255, 80, 80, 0.92);
-  border-color: rgba(255, 80, 80, 0.22);
-}}
-button.recording-prompt-button-danger:hover,
-button.recording-prompt-button-danger:active {{
-  background: rgba(255, 80, 80, 0.16);
-  color: rgba(255, 65, 65, 1.0);
-  border-color: rgba(255, 80, 80, 0.34);
-}}
-
 /* ── Recording result ── */
 box.recording-result-surface {{
   border-radius: 0;
@@ -723,7 +735,7 @@ frame.recording-result-thumbnail-frame {{
 frame.recording-result-thumbnail-frame > border {{
   border: none;
 }}
-box.recording-result-button-row button.recording-prompt-button {{
+box.recording-result-button-row button.icon-button {{
   min-width: 0;
 }}
 

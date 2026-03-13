@@ -9,8 +9,9 @@ The name "Jjaeng" is a nod to something vivid, sharp, and bright, while the proj
 ## What It Does
 
 - Capture fullscreen, region, or a selected window.
-- Start fullscreen, region, or window recordings with prompt-driven size, encoding, and audio controls.
-- Keep a live elapsed timer while recording, then open a recording result window with `Save`, `Copy Path`, and `Open` actions when you stop.
+- Start fullscreen, region, or window recordings with a compact control bar for target, audio source, scale, quality, and record/pause/stop actions.
+- Keep a live elapsed timer while recording, and use the same compact HUD even for direct-start recordings.
+- Stop into a recording result window with lighter `Save`, `Copy Path`, and `Open` actions for the finished video.
 - Run as a background daemon (`jjaengd`) with socket-based control.
 - Show a compact preview with fast `Save` / `Copy` actions and `double-click` / `E` to jump into the editor.
 - Open a history surface with image/video thumbnails, quick copy/save, and edit entrypoints.
@@ -89,6 +90,8 @@ jjaeng --record-region-prompt
 jjaeng --record-window-prompt
 jjaeng --stop-recording
 ```
+
+`--record-*-prompt` opens the compact recording bar before capture starts so you can pick scale, quality, and either a system-audio source or microphone source. Plain `--record-*` starts immediately with current defaults, then keeps the same live HUD on screen for timer, pause, and stop.
 
 History and follow-up actions:
 

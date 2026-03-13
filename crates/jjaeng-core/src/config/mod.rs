@@ -28,6 +28,8 @@ pub struct AppConfig {
     #[serde(default)]
     pub recording_audio_mode: Option<AudioMode>,
     #[serde(default)]
+    pub recording_system_device: Option<String>,
+    #[serde(default)]
     pub recording_mic_device: Option<String>,
     #[serde(default)]
     pub recording_target: Option<RecordingTarget>,

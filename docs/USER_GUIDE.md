@@ -39,7 +39,7 @@ If you are setting up Jjaeng for the first time:
 3. Reload Hyprland: `hyprctl reload`
 4. Press `Print` to capture a region. The preview window opens automatically.
 5. In Preview: `s` to save, `c` to copy, `e` or `double-click` to open the editor.
-6. For recordings, start `jjaeng --record-region-prompt`, watch the live timer, then stop and use the recording result window to `Save`, `Copy Path`, or `Open` the finished video.
+6. For recordings, start `jjaeng --record-region-prompt`, use the compact recording bar to pick audio/quality if needed, watch the live timer, then stop and use the recording result window to `Save`, `Copy Path`, or `Open` the finished video.
 
 That's it. The recommended workflow is keybinding-driven — bind capture commands to hotkeys and trigger them directly. Everything else in this guide is optional.
 
@@ -157,9 +157,13 @@ jjaeng --record-window-prompt
 jjaeng --stop-recording
 ```
 
-`--record-*-prompt` opens the recording prompt first so you can confirm size, encoding, and audio settings before capture starts. Plain `--record-*` uses the current defaults immediately.
+`--record-*-prompt` opens the compact recording bar first so you can confirm scale, quality, and audio source before capture starts. Plain `--record-*` uses the current defaults immediately, then keeps the same live control bar on screen once recording begins.
 
-During an active recording, the prompt stays visible and shows the live elapsed time. When you stop, Jjaeng opens a recording result window with a thumbnail plus `Save`, `Copy Path`, `Open`, and `Close` actions for the finished video.
+The recording bar uses icon controls: target buttons, separate system-audio and microphone toggles with their own source dropdowns, scale, quality, live timer, and record / pause / stop actions.
+
+At the moment Jjaeng exposes system audio and microphone as separate controls, but only one audio path can be active at a time with the current recording backend.
+
+During an active recording, the same bar stays visible and shows the live elapsed time. When you stop, Jjaeng opens a recording result window with a thumbnail plus `Save`, `Copy Path`, `Open`, and `Close` actions for the finished video.
 
 The recommended approach is to bind these commands to Hyprland hotkeys ([Section 10](#10-hyprland-keybinding-setup)) and trigger captures directly from the keyboard. The `--launchpad` mode provides a button-based UI but is mainly intended for development and testing.
 
@@ -187,7 +191,7 @@ graph LR
 2. **Preview** — inspect the result. Decide whether to keep, discard, or edit.
 3. **Editor** — annotate with arrows, rectangles, text, blur, and more.
 4. **Output** — save to file or copy to clipboard.
-5. **Record** — start a screen recording with current defaults or from the prompt.
+5. **Record** — start a screen recording with current defaults or from the compact recording bar.
 6. **Recording Result** — stop the recording and use the result window to save, copy the video path, or open the finished file.
 
 To revisit prior captures, use `jjaeng --toggle-history` or `jjaeng --open-history`. The history window shows both screenshots and recordings, and double-clicking a screenshot thumbnail opens it in the editor.
@@ -222,6 +226,8 @@ Preview is a useful safety gate: verify the capture content before committing to
 ### Recording Result Window
 
 When a recording stops successfully, Jjaeng opens a separate result window for the finished video.
+
+The result actions are shown as lightweight icon controls, but they map to the same behavior:
 
 | Action | Behavior |
 |--------|----------|
@@ -552,10 +558,10 @@ Many coding agents accept clipboard images directly. Jjaeng copies PNG bytes to 
 ### Record and hand off a clip
 
 ```
-jjaeng --record-region-prompt → Start → Stop → Copy Path / Open
+jjaeng --record-region-prompt → Choose source / quality → Record → Stop → Copy Path / Open
 ```
 
-Use the prompt when you want to confirm encoding or audio settings first, then use the recording result window to hand off the video immediately after stop.
+Use the recording bar when you want to confirm audio source or quality first, then use the recording result window to hand off the video immediately after stop.
 
 ---
 
