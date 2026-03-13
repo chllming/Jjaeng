@@ -132,7 +132,7 @@ Jjaeng supports screenshot capture modes, recording modes, and a launchpad mode:
 | `--capture-window` | `--window` | Immediately starts window selection |
 | `--capture-full` | `--full` | Immediately captures the entire screen |
 | `--launchpad` | — | Opens the launchpad window (primarily for development) |
-| `--version` | `-V` | Print version string (e.g. `Jjaeng 0.5.0 (abc1234)`) and exit |
+| `--version` | `-V` | Print version string (e.g. `Jjaeng 0.6.0`) and exit |
 | `--help` | `-h` | Print usage summary and exit |
 
 ```bash
