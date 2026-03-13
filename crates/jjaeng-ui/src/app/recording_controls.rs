@@ -217,8 +217,8 @@ pub(super) fn sync_audio_controls(
 ) {
     system_toggle.set_sensitive(sensitive && system_available);
     mic_toggle.set_sensitive(sensitive && microphone_available);
-    system_combo.set_sensitive(sensitive && system_available && system_toggle.is_active());
-    mic_combo.set_sensitive(sensitive && microphone_available && mic_toggle.is_active());
+    system_combo.set_sensitive(sensitive && system_available);
+    mic_combo.set_sensitive(sensitive && microphone_available);
 }
 
 pub(super) fn recording_audio_config_from_controls(

@@ -1807,6 +1807,7 @@ impl App {
                                                     can_save_from_temp,
                                                     temp_thumbnail_kept,
                                                 );
+                                                dismiss_recording_result(&recording_result);
                                                 *status_log.borrow_mut() =
                                                     format!("saved {recording_id}");
                                                 jjaeng_core::notification::send(format!(
@@ -1830,6 +1831,7 @@ impl App {
                                 };
                                 let on_copy: Rc<dyn Fn()> = {
                                     let status_log = status_log.clone();
+                                    let recording_result = recording_result.clone();
                                     let render_handle = render_handle.clone();
                                     let current_display_path = current_display_path.clone();
                                     let recording_id = recording_id.clone();
@@ -1837,6 +1839,7 @@ impl App {
                                         let path = current_display_path.borrow().clone();
                                         match WlCopyBackend.copy(&path) {
                                             Ok(()) => {
+                                                dismiss_recording_result(&recording_result);
                                                 *status_log.borrow_mut() =
                                                     format!("copied {recording_id}");
                                                 jjaeng_core::notification::send(format!(
@@ -1896,7 +1899,6 @@ impl App {
                                     })
                                 };
                                 let result_artifact = RecordingResultArtifact {
-                                    recording_id: artifact.recording_id.clone(),
                                     output_path: result_output_path.clone(),
                                     thumbnail_path: result_thumbnail_path.clone(),
                                     width: artifact.width,

@@ -558,6 +558,14 @@ box.recording-bar-segment {{
   min-height: 32px;
   padding: 0;
 }}
+box.recording-bar-static-icon {{
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: 0;
+  border: {history_inner_border_width}px solid alpha({text_color}, 0.16);
+  background: alpha({canvas_background}, {history_tile_alpha:.2});
+  padding: 0;
+}}
 image.recording-bar-segment-icon {{
   opacity: 0.72;
 }}
@@ -568,6 +576,109 @@ box.recording-bar-segment > box {{
 }}
 box.recording-bar-segment combobox button,
 box.recording-bar-segment dropdown > button {{
+  min-width: 0;
+}}
+menubutton.recording-bar-menu > button {{
+  min-width: 28px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 0;
+  border: {history_inner_border_width}px solid alpha({text_color}, 0.16);
+  background: alpha({canvas_background}, {history_tile_alpha:.2});
+  box-shadow: none;
+}}
+menubutton.recording-bar-menu > button image {{
+  -gtk-icon-size: 14px;
+}}
+menubutton.recording-bar-menu > button:hover,
+menubutton.recording-bar-menu > button:active,
+menubutton.recording-bar-menu > button:checked {{
+  border-color: {focus_ring_color};
+  background: alpha({canvas_background}, {history_surface_alpha:.2});
+  box-shadow: none;
+}}
+box.recording-prompt-compact {{
+  min-height: 24px;
+}}
+box.recording-prompt-compact box.recording-bar-segment {{
+  min-height: 24px;
+  margin-right: {spacing_4}px;
+}}
+box.recording-prompt-compact box.recording-bar-static-icon {{
+  min-width: 24px;
+  min-height: 24px;
+  border: none;
+  background: transparent;
+}}
+box.recording-prompt-compact button.icon-button,
+box.recording-prompt-compact togglebutton.icon-button {{
+  min-width: 30px;
+  min-height: 30px;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}}
+box.recording-prompt-compact menubutton.recording-bar-menu > button {{
+  min-width: 24px;
+  min-height: 30px;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}}
+box.recording-prompt-compact button.icon-button image,
+box.recording-prompt-compact togglebutton.icon-button image,
+box.recording-prompt-compact menubutton.recording-bar-menu > button image,
+box.recording-prompt-compact image.recording-bar-segment-icon {{
+  -gtk-icon-size: 12px;
+}}
+box.recording-prompt-compact button.icon-button:hover,
+box.recording-prompt-compact button.icon-button:active,
+box.recording-prompt-compact togglebutton.icon-button:hover,
+box.recording-prompt-compact togglebutton.icon-button:active,
+box.recording-prompt-compact menubutton.recording-bar-menu > button:hover,
+box.recording-prompt-compact menubutton.recording-bar-menu > button:active,
+box.recording-prompt-compact menubutton.recording-bar-menu > button:checked {{
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}}
+box.recording-prompt-compact button.icon-button:hover image,
+box.recording-prompt-compact button.icon-button:active image,
+box.recording-prompt-compact togglebutton.icon-button:hover image,
+box.recording-prompt-compact togglebutton.icon-button:active image,
+box.recording-prompt-compact menubutton.recording-bar-menu > button:hover image,
+box.recording-prompt-compact menubutton.recording-bar-menu > button:active image,
+box.recording-prompt-compact menubutton.recording-bar-menu > button:checked image {{
+  color: {focus_ring_color};
+}}
+box.recording-prompt-compact togglebutton.recording-bar-toggle:checked,
+box.recording-prompt-compact togglebutton.recording-bar-toggle:checked:hover,
+box.recording-prompt-compact togglebutton.recording-bar-toggle:checked:active {{
+  background: transparent;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+}}
+box.recording-prompt-compact togglebutton.recording-bar-toggle:checked image,
+box.recording-prompt-compact togglebutton.recording-bar-toggle:checked:hover image,
+box.recording-prompt-compact togglebutton.recording-bar-toggle:checked:active image {{
+  color: {focus_ring_color};
+}}
+box.recording-prompt-compact button.recording-bar-record,
+box.recording-prompt-compact button.recording-bar-record:hover,
+box.recording-prompt-compact button.recording-bar-record:active {{
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}}
+box.recording-prompt-compact button.recording-bar-stop,
+box.recording-prompt-compact button.recording-bar-stop:hover,
+box.recording-prompt-compact button.recording-bar-stop:active {{
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}}
+popover.recording-bar-popover combobox.recording-popover-combo {{
   min-width: 0;
 }}
 box.recording-bar-chip {{
@@ -590,6 +701,10 @@ label.recording-bar-timer {{
   background: alpha({canvas_background}, {history_tile_alpha:.2});
   padding: 0 {spacing_12}px;
   min-height: 32px;
+}}
+box.recording-prompt-compact label.recording-bar-timer {{
+  min-height: 24px;
+  padding: 0 {spacing_8}px;
 }}
 label.recording-source-hint,
 label.recording-prompt-hint,
@@ -693,12 +808,14 @@ box.recording-prompt-surface {{
   border: {history_border_width}px solid alpha({text_color}, 0.82);
   background: alpha({canvas_background}, {history_surface_alpha:.2});
   box-shadow: none;
+  padding: 0;
 }}
 .recording-prompt-surface,
 .recording-prompt-surface label,
 .recording-prompt-surface button,
 .recording-prompt-surface entry,
-.recording-prompt-surface combobox {{
+.recording-prompt-surface combobox,
+.recording-prompt-surface menubutton {{
   font-family: {history_font_family};
   color: {text_color};
 }}

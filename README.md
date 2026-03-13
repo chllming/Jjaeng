@@ -9,7 +9,7 @@ The name "Jjaeng" is a nod to something vivid, sharp, and bright, while the proj
 ## What It Does
 
 - Capture fullscreen, region, or a selected window.
-- Start fullscreen, region, or window recordings with a compact control bar for target, audio source, scale, quality, and record/pause/stop actions.
+- Start fullscreen, region, or window recordings with a compact icon bar for target, audio source, scale, quality, and record/pause/stop actions.
 - Keep a live elapsed timer while recording, and use the same compact HUD even for direct-start recordings.
 - Stop into a recording result window with lighter `Save`, `Copy Path`, and `Open` actions for the finished video.
 - Run as a background daemon (`jjaengd`) with socket-based control.
@@ -93,9 +93,9 @@ jjaeng --record-window-prompt
 jjaeng --stop-recording
 ```
 
-`--record-*-prompt` opens the compact recording bar before capture starts so you can pick scale, quality, and either a system-audio source or microphone source. Plain `--record-*` starts immediately with current defaults, then keeps the same live HUD on screen for timer, pause, and stop.
+`--record-*-prompt` opens the compact recording bar before capture starts so you can pick scale, quality, and either a system-audio source or microphone source. Press `Esc` before recording starts to cancel both the armed selection and the control bar. Plain `--record-*` starts immediately with current defaults, then keeps the same live HUD on screen for timer, pause, and stop.
 
-Jjaeng uses whichever supported recorder backend is available, preferring `gpu-screen-recorder` and falling back to `wl-screenrec`. Finished recordings are written into history immediately, and the result window `Save` action copies the video into `~/Videos/` by default.
+Jjaeng uses whichever supported recorder backend is available, preferring `gpu-screen-recorder` and falling back to `wl-screenrec`. Finished recordings are written into history immediately, and the result window `Save` action copies the video into `~/Videos/` by default. In the result window, `S` saves, `C` copies the path, `O` opens the video, and `Esc` closes it.
 
 History and follow-up actions:
 

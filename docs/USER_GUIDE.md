@@ -159,15 +159,15 @@ jjaeng --record-window-prompt
 jjaeng --stop-recording
 ```
 
-`--record-*-prompt` opens the compact recording bar first so you can confirm scale, quality, and audio source before capture starts. Plain `--record-*` uses the current defaults immediately, then keeps the same live control bar on screen once recording begins.
+`--record-*-prompt` opens the compact recording bar first so you can confirm scale, quality, and audio source before capture starts. Press `Esc` before recording begins to cancel both the armed capture area and the recording bar. Plain `--record-*` uses the current defaults immediately, then keeps the same live control bar on screen once recording begins.
 
-The recording bar uses icon controls: target buttons, separate system-audio and microphone toggles with their own source dropdowns, scale, quality, live timer, and record / pause / stop actions.
+The recording bar uses icon controls: target indicator, separate system-audio and microphone toggles with adjacent source dropdown chevrons, scale, quality, live timer, and record / pause / stop actions.
 
 At the moment Jjaeng exposes system audio and microphone as separate controls, but only one audio path can be active at a time with the current recording backend.
 
 Jjaeng uses whichever supported recording backend is available, preferring `gpu-screen-recorder` and falling back to `wl-screenrec`.
 
-During an active recording, the same bar stays visible and shows the live elapsed time. When you stop, Jjaeng opens a recording result window with a thumbnail plus `Save`, `Copy Path`, `Open`, and `Close` actions for the finished video.
+During an active recording, the same bar stays visible and shows the live elapsed time. `Esc` stops an active recording from that bar. When you stop, Jjaeng opens a recording result window with a thumbnail plus `Save`, `Copy Path`, `Open`, and `Close` actions for the finished video.
 
 The recommended approach is to bind these commands to Hyprland hotkeys ([Section 10](#10-hyprland-keybinding-setup)) and trigger captures directly from the keyboard. The `--launchpad` mode provides a button-based UI but is mainly intended for development and testing.
 
@@ -239,6 +239,15 @@ The result actions are shown as lightweight icon controls, but they map to the s
 | `Copy Path` | Copies the current video file path to the clipboard, usually the history copy until you save elsewhere |
 | `Open` | Opens the recording in the system default video player |
 | `Close` | Dismisses the result window and leaves the recording in history |
+
+Keyboard shortcuts on the recording result window:
+
+| Key | Action |
+|-----|--------|
+| `s` | Save recording, then close the result window |
+| `c` | Copy the current recording path, then close the result window |
+| `o` | Open the recording |
+| `Esc` | Close the result window |
 
 If the recording was already persisted automatically, the result window still opens so you can copy the path or open the file immediately.
 

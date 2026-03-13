@@ -3,24 +3,21 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use crate::ui::{icon_button, StyleTokens};
+use gtk4::gdk::Key;
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Application, ApplicationWindow, Box as GtkBox, Button, Frame, Label, Orientation,
-    Picture,
+    Align, Application, ApplicationWindow, Box as GtkBox, Button, EventControllerKey, Frame, Label,
+    Orientation, Overflow, Overlay, Picture,
 };
 use jjaeng_core::identity::APP_CSS_ROOT;
 
 use super::hypr::{focused_monitor_center, request_window_floating_with_geometry};
-use super::layout::bottom_centered_window_geometry_for_point;
-use super::window_state::RuntimeWindowGeometry;
+use super::layout::compute_media_preview_geometry_for_point;
 
 const RECORDING_RESULT_TITLE: &str = "Jjaeng Recording Preview";
-const RECORDING_RESULT_WIDTH: i32 = 448;
-const RECORDING_RESULT_HEIGHT: i32 = 368;
 
 #[derive(Clone)]
 pub(super) struct RecordingResultArtifact {
-    pub(super) recording_id: String,
     pub(super) output_path: PathBuf,
     pub(super) thumbnail_path: PathBuf,
     pub(super) width: u32,
@@ -35,7 +32,6 @@ pub(super) struct RecordingResultArtifact {
 pub(super) struct RecordingResultRuntime {
     window: ApplicationWindow,
     close_guard: Rc<Cell<bool>>,
-    path_label: Label,
     save_button: Button,
     output_path: PathBuf,
     thumbnail_path: PathBuf,
@@ -65,8 +61,8 @@ impl RecordingResultRuntime {
     }
 
     fn set_saved_path(&self, saved_path: &Path, cleanup_output: bool, cleanup_thumbnail: bool) {
-        self.path_label
-            .set_text(saved_path.to_string_lossy().as_ref());
+        let saved_path_text = saved_path.to_string_lossy().into_owned();
+        self.window.set_tooltip_text(Some(&saved_path_text));
         self.save_button.set_sensitive(false);
         self.mark_cleanup(cleanup_output, cleanup_thumbnail);
     }
@@ -109,58 +105,55 @@ pub(super) fn present_recording_result(
 ) {
     dismiss_recording_result(recording_result);
 
+    let (anchor_x, anchor_y) = focused_monitor_center().unwrap_or((0, 0));
+    let geometry = compute_media_preview_geometry_for_point(
+        artifact.width,
+        artifact.height,
+        anchor_x,
+        anchor_y,
+        style_tokens,
+    );
+
     let window = ApplicationWindow::new(app);
     window.set_title(Some(RECORDING_RESULT_TITLE));
     window.set_decorated(false);
     window.set_resizable(false);
     window.add_css_class(APP_CSS_ROOT);
+    window.add_css_class("floating-preview-window");
     window.add_css_class("recording-result-window");
+    let initial_display_path = artifact
+        .saved_path
+        .as_ref()
+        .unwrap_or(&artifact.output_path)
+        .to_string_lossy()
+        .into_owned();
+    window.set_tooltip_text(Some(&initial_display_path));
 
-    let root = GtkBox::new(Orientation::Vertical, style_tokens.spacing_12);
-    root.add_css_class("recording-result-surface");
-    root.set_margin_top(style_tokens.spacing_12);
-    root.set_margin_bottom(style_tokens.spacing_12);
-    root.set_margin_start(style_tokens.spacing_12);
-    root.set_margin_end(style_tokens.spacing_12);
-
-    let title_label = Label::new(Some("Recording Finished"));
-    title_label.add_css_class("recording-result-title");
-    title_label.set_halign(Align::Start);
-    title_label.set_xalign(0.0);
-
-    let meta_label = Label::new(Some(&format_recording_result_meta(artifact)));
-    meta_label.add_css_class("recording-result-meta");
-    meta_label.set_halign(Align::Start);
-    meta_label.set_xalign(0.0);
-
-    let path_label = Label::new(Some(
-        artifact
-            .saved_path
-            .as_ref()
-            .unwrap_or(&artifact.output_path)
-            .to_string_lossy()
-            .as_ref(),
-    ));
-    path_label.add_css_class("recording-result-path");
-    path_label.set_halign(Align::Start);
-    path_label.set_xalign(0.0);
-    path_label.set_wrap(true);
-    path_label.set_wrap_mode(gtk4::pango::WrapMode::WordChar);
-    path_label.set_selectable(true);
+    let root = Overlay::new();
+    root.add_css_class("transparent-bg");
 
     let thumbnail_frame = Frame::new(None);
+    thumbnail_frame.add_css_class("preview-surface");
     thumbnail_frame.add_css_class("recording-result-thumbnail-frame");
-    thumbnail_frame.set_size_request(400, 225);
+    thumbnail_frame.set_hexpand(true);
+    thumbnail_frame.set_vexpand(true);
+    thumbnail_frame.set_overflow(Overflow::Hidden);
     let thumbnail = Picture::for_file(&gtk4::gio::File::for_path(&artifact.thumbnail_path));
     thumbnail.set_keep_aspect_ratio(true);
     thumbnail.set_can_shrink(true);
     thumbnail.set_hexpand(true);
     thumbnail.set_vexpand(true);
     thumbnail_frame.set_child(Some(&thumbnail));
+    root.set_child(Some(&thumbnail_frame));
 
     let button_row = GtkBox::new(Orientation::Horizontal, style_tokens.spacing_4);
+    button_row.add_css_class("preview-top-controls");
+    button_row.add_css_class("preview-action-group");
     button_row.add_css_class("recording-result-button-row");
     button_row.set_halign(Align::End);
+    button_row.set_valign(Align::Start);
+    button_row.set_margin_top(style_tokens.spacing_12);
+    button_row.set_margin_end(style_tokens.spacing_12);
 
     let save_button = icon_button(
         "save-symbolic",
@@ -192,15 +185,21 @@ pub(super) fn present_recording_result(
     button_row.append(&copy_button);
     button_row.append(&open_button);
     button_row.append(&close_button);
+    root.add_overlay(&button_row);
 
-    root.append(&title_label);
-    root.append(&meta_label);
-    root.append(&thumbnail_frame);
-    root.append(&path_label);
-    root.append(&button_row);
+    let meta_anchor = GtkBox::new(Orientation::Vertical, 0);
+    meta_anchor.set_halign(Align::Start);
+    meta_anchor.set_valign(Align::End);
+    meta_anchor.set_margin_bottom(style_tokens.spacing_12);
+    meta_anchor.set_margin_start(style_tokens.spacing_12);
+    let meta_label = Label::new(Some(&format_recording_result_meta(artifact)));
+    meta_label.add_css_class("toast-badge");
+    meta_anchor.append(&meta_label);
+    root.add_overlay(&meta_anchor);
+
     window.set_child(Some(&root));
-    window.set_default_size(RECORDING_RESULT_WIDTH, RECORDING_RESULT_HEIGHT);
-    window.set_size_request(RECORDING_RESULT_WIDTH, RECORDING_RESULT_HEIGHT);
+    window.set_default_size(geometry.width, geometry.height);
+    window.set_size_request(geometry.width, geometry.height);
 
     let close_guard = Rc::new(Cell::new(false));
 
@@ -240,20 +239,45 @@ pub(super) fn present_recording_result(
             (on_close.as_ref())();
         });
     }
+    {
+        let on_save = on_save.clone();
+        let on_copy = on_copy.clone();
+        let on_open = on_open.clone();
+        let on_close = on_close.clone();
+        let save_button = save_button.clone();
+        let key_controller = EventControllerKey::new();
+        key_controller.connect_key_pressed(move |_, key, _, _| {
+            match key.to_unicode().map(|value| value.to_ascii_lowercase()) {
+                Some('s') => {
+                    if save_button.is_sensitive() {
+                        (on_save.as_ref())();
+                    }
+                    gtk4::glib::Propagation::Stop
+                }
+                Some('c') => {
+                    (on_copy.as_ref())();
+                    gtk4::glib::Propagation::Stop
+                }
+                Some('o') => {
+                    (on_open.as_ref())();
+                    gtk4::glib::Propagation::Stop
+                }
+                _ if key == Key::Escape => {
+                    (on_close.as_ref())();
+                    gtk4::glib::Propagation::Stop
+                }
+                _ => gtk4::glib::Propagation::Proceed,
+            }
+        });
+        window.add_controller(key_controller);
+    }
 
     window.present();
-    let (anchor_x, anchor_y) = focused_monitor_center().unwrap_or((0, 0));
-    let window_geometry = bottom_centered_window_geometry_for_point(
-        anchor_x,
-        anchor_y,
-        RuntimeWindowGeometry::new(RECORDING_RESULT_WIDTH, RECORDING_RESULT_HEIGHT),
-        style_tokens.spacing_24,
-    );
     request_window_floating_with_geometry(
         "recording-result",
         RECORDING_RESULT_TITLE,
         true,
-        Some(window_geometry),
+        Some((geometry.x, geometry.y, geometry.width, geometry.height)),
         false,
         true,
         true,
@@ -264,7 +288,6 @@ pub(super) fn present_recording_result(
         .replace(RecordingResultRuntime {
             window,
             close_guard,
-            path_label,
             save_button,
             output_path: artifact.output_path.clone(),
             thumbnail_path: artifact.thumbnail_path.clone(),
@@ -278,8 +301,8 @@ fn format_recording_result_meta(artifact: &RecordingResultArtifact) -> String {
     let minutes = total_seconds / 60;
     let seconds = total_seconds % 60;
     format!(
-        "{} · {:02}:{:02} · {} x {}",
-        artifact.recording_id, minutes, seconds, artifact.width, artifact.height
+        "{minutes:02}:{seconds:02} · {} x {}",
+        artifact.width, artifact.height
     )
 }
 
@@ -290,7 +313,6 @@ mod tests {
     #[test]
     fn format_recording_result_meta_uses_duration_and_geometry() {
         let artifact = RecordingResultArtifact {
-            recording_id: "recording-1".to_string(),
             output_path: PathBuf::from("/tmp/recording-1.mp4"),
             thumbnail_path: PathBuf::from("/tmp/recording-1.png"),
             width: 1920,
@@ -303,7 +325,7 @@ mod tests {
 
         assert_eq!(
             format_recording_result_meta(&artifact),
-            "recording-1 · 01:12 · 1920 x 1080"
+            "01:12 · 1920 x 1080"
         );
     }
 }

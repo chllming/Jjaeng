@@ -713,7 +713,10 @@ fn ensure_child_started(command: &'static str, child: &mut Child) -> Result<(), 
     match child.try_wait().map_err(RecordError::OutputMissing)? {
         Some(status) => Err(RecordError::CommandFailed {
             command: command.to_string(),
-            message: format!("recorder exited immediately with status {:?}", status.code()),
+            message: format!(
+                "recorder exited immediately with status {:?}",
+                status.code()
+            ),
         }),
         None => Ok(()),
     }
