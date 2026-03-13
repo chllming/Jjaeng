@@ -645,6 +645,14 @@ fn should_release_headless_startup_hold(
         && !recording_prompt_open
 }
 
+fn should_restore_active_recording_on_stop_error(err: &recording::RecordError) -> bool {
+    matches!(err, recording::RecordError::StopFailed { .. })
+        || matches!(
+            err,
+            recording::RecordError::CommandFailed { command, .. } if command == "kill -INT"
+        )
+}
+
 pub struct App {
     machine: StateMachine,
 }
@@ -1010,6 +1018,7 @@ impl App {
                     let active_capture = runtime.active_capture().cloned();
                     let captures = runtime.captures_for_display();
                     let ids = runtime.ids_for_display();
+                    let recording_available = recording::recording_backend_available();
                     let active_capture_id = active_capture
                         .as_ref()
                         .map(|artifact| artifact.capture_id.clone())
@@ -1021,7 +1030,12 @@ impl App {
                         &runtime.latest_label_text(),
                         &ids,
                     );
-                    launchpad.set_action_availability(state, has_capture, ocr_available);
+                    launchpad.set_action_availability(
+                        state,
+                        has_capture,
+                        ocr_available,
+                        recording_available,
+                    );
 
                     match state {
                         AppState::Preview => {
@@ -1051,6 +1065,12 @@ impl App {
                     let editor_window_open = editor_window.borrow().is_some();
                     let recording_active = recording_runtime.is_active();
                     let recording_paused = recording_runtime.is_paused();
+                    launchpad.update_recording_overview(
+                        recording_available,
+                        recording_active,
+                        recording_paused,
+                        recording_runtime.elapsed_ms.get(),
+                    );
                     sync_recording_prompt(
                         &recording_prompt,
                         recording_active,
@@ -1128,13 +1148,6 @@ impl App {
                     move |request: RecordingRequest,
                           selection: Option<RecordingSelection>,
                           preserve_prompt: bool| {
-                        if preserve_prompt {
-                            set_recording_prompt_starting(&recording_prompt);
-                        } else {
-                            dismiss_recording_prompt(&recording_prompt);
-                        }
-                        recording_flow_pending.set(true);
-
                         if recording_runtime.is_active() {
                             recording_flow_pending.set(false);
                             *status_log.borrow_mut() = "recording already active".to_string();
@@ -1164,6 +1177,26 @@ impl App {
                             }
                             return;
                         }
+                        if !recording::recording_backend_available() {
+                            recording_flow_pending.set(false);
+                            let message = recording::recording_backend_requirement_message();
+                            *status_log.borrow_mut() = message.clone();
+                            if preserve_prompt {
+                                set_recording_prompt_error(&recording_prompt, &message);
+                            }
+                            jjaeng_core::notification::send(message);
+                            if let Some(render) = render_handle.borrow().as_ref() {
+                                (render.as_ref())();
+                            }
+                            return;
+                        }
+
+                        if preserve_prompt {
+                            set_recording_prompt_starting(&recording_prompt);
+                        } else {
+                            dismiss_recording_prompt(&recording_prompt);
+                        }
+                        recording_flow_pending.set(true);
 
                         *status_log.borrow_mut() =
                             format!("starting {:?} recording", request.target);
@@ -1352,6 +1385,15 @@ impl App {
                     if !matches!(machine.borrow().state(), AppState::Idle) {
                         *status_log.borrow_mut() =
                             "recording can only start from idle state".to_string();
+                        if let Some(render) = render_handle.borrow().as_ref() {
+                            (render.as_ref())();
+                        }
+                        return;
+                    }
+                    if !recording::recording_backend_available() {
+                        let message = recording::recording_backend_requirement_message();
+                        *status_log.borrow_mut() = message.clone();
+                        jjaeng_core::notification::send(message);
                         if let Some(render) = render_handle.borrow().as_ref() {
                             (render.as_ref())();
                         }
@@ -1554,16 +1596,55 @@ impl App {
                             }
                             recording_runtime.elapsed_ms.set(0);
                             dismiss_recording_prompt(&recording_prompt);
-                            let _ = std::fs::remove_file(&artifact.output_path);
-                            let _ = std::fs::remove_file(&artifact.thumbnail_path);
-                            jjaeng_core::notification::send("Recording stopped");
+                            if persisted {
+                                let _ = std::fs::remove_file(&artifact.output_path);
+                                let _ = std::fs::remove_file(&artifact.thumbnail_path);
+                                jjaeng_core::notification::send("Recording stopped");
+                            } else {
+                                jjaeng_core::notification::send(format!(
+                                    "Recording stopped; file kept at {}",
+                                    artifact.output_path.display()
+                                ));
+                            }
                         }
                         Err(err) => {
-                            *status_log.borrow_mut() = format!("recording stop failed: {err}");
-                            recording_runtime.active.borrow_mut().replace(active);
-                            jjaeng_core::notification::send(format!(
-                                "Recording stop failed: {err}"
-                            ));
+                            if should_restore_active_recording_on_stop_error(&err) {
+                                *status_log.borrow_mut() =
+                                    format!("recording stop failed: {err}");
+                                recording_runtime.active.borrow_mut().replace(active);
+                                jjaeng_core::notification::send(format!(
+                                    "Recording stop failed: {err}"
+                                ));
+                            } else {
+                                let output_path = active.handle.output_path.clone();
+                                let output_exists = output_path.exists();
+                                active.timer_source_id.remove();
+                                recording_runtime.elapsed_ms.set(0);
+                                dismiss_recording_prompt(&recording_prompt);
+                                if let Err(transition_err) =
+                                    machine.borrow_mut().transition(AppEvent::StopRecording)
+                                {
+                                    *status_log.borrow_mut() = format!(
+                                        "recording stopped but state reset failed: {transition_err}"
+                                    );
+                                } else if output_exists {
+                                    *status_log.borrow_mut() = format!(
+                                        "recording stopped but finalization failed; file kept at {}",
+                                        output_path.display()
+                                    );
+                                } else {
+                                    *status_log.borrow_mut() =
+                                        format!("recording stopped but no output was produced: {err}");
+                                }
+                                jjaeng_core::notification::send(if output_exists {
+                                    format!(
+                                        "Recording stopped; file kept at {}",
+                                        output_path.display()
+                                    )
+                                } else {
+                                    format!("Recording stopped but finalization failed: {err}")
+                                });
+                            }
                         }
                     }
 
@@ -1819,6 +1900,22 @@ mod tests {
         assert!(!text_input_should_be_active(
             ToolKind::Select,
             TextInputActivation::Auto
+        ));
+    }
+
+    #[test]
+    fn stop_error_restores_active_recording_only_for_pre_stop_failures() {
+        assert!(should_restore_active_recording_on_stop_error(
+            &recording::RecordError::CommandFailed {
+                command: "kill -INT".to_string(),
+                message: "exit status 1".to_string(),
+            }
+        ));
+        assert!(!should_restore_active_recording_on_stop_error(
+            &recording::RecordError::CommandFailed {
+                command: "ffmpeg".to_string(),
+                message: "exit status 1".to_string(),
+            }
         ));
     }
 

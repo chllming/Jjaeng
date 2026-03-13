@@ -225,7 +225,6 @@ fn parse_recording_audio(arg: &str) -> Option<AudioMode> {
         "off" | "none" => Some(AudioMode::Off),
         "desktop" => Some(AudioMode::Desktop),
         "mic" | "microphone" => Some(AudioMode::Microphone),
-        "both" => Some(AudioMode::Both),
         _ => None,
     }
 }
@@ -315,5 +314,10 @@ mod tests {
     fn startup_config_parses_stop_recording_flag() {
         let config = StartupConfig::from_iter(["--stop-recording"]);
         assert_eq!(config.remote_command, Some(RemoteCommand::StopRecording));
+    }
+
+    #[test]
+    fn parse_recording_audio_rejects_unsupported_audio_mix() {
+        assert_eq!(parse_recording_audio("--record-audio=both"), None);
     }
 }

@@ -538,13 +538,21 @@ frame.launchpad-panel {{
 frame.launchpad-panel > border {{
   border: none;
 }}
-box.launchpad-recording-controls,
+box.launchpad-recording-actions-row button,
+box.launchpad-recording-field-row,
 box.launchpad-recording-mic-row {{
   min-height: 32px;
 }}
-box.launchpad-recording-controls combobox,
+box.launchpad-recording-controls,
+box.launchpad-recording-summary {{
+  min-width: 0;
+}}
+label.launchpad-recording-field-label {{
+  min-width: 72px;
+}}
+box.launchpad-recording-field-row combobox,
 box.launchpad-recording-mic-row entry {{
-  min-width: 120px;
+  min-width: 168px;
 }}
 .launchpad-root button.launchpad-primary-button {{
   background-image: linear-gradient(
@@ -625,17 +633,26 @@ label.recording-prompt-hint {{
   font-size: {history_meta_font_size}px;
   opacity: 0.82;
 }}
-box.recording-prompt-controls,
+box.recording-prompt-controls {{
+  min-width: 0;
+}}
+box.recording-prompt-control-row,
 box.recording-prompt-mic-row {{
   min-height: 32px;
 }}
-box.recording-prompt-controls combobox,
+label.recording-prompt-control-label {{
+  min-width: 88px;
+}}
+box.recording-prompt-control-row combobox,
 box.recording-prompt-mic-row combobox {{
-  min-width: 120px;
+  min-width: 180px;
 }}
 button.recording-prompt-button {{
   min-height: 32px;
   border-radius: 0;
+}}
+box.recording-prompt-button-row button.recording-prompt-button {{
+  min-width: 0;
 }}
 button.recording-prompt-button-primary {{
   background-image: linear-gradient(

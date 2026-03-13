@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use image::{Rgba, RgbaImage};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -10,6 +11,9 @@ use crate::capture;
 use crate::storage::create_temp_recording;
 
 const DEFAULT_RECORDING_EXTENSION: &str = "mp4";
+const RECORDING_BACKEND_COMMAND: &str = "wl-screenrec";
+const RECORDING_THUMBNAIL_WIDTH: u32 = 320;
+const RECORDING_THUMBNAIL_HEIGHT: u32 = 180;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
@@ -222,6 +226,8 @@ pub enum RecordError {
     InvalidGeometry(String),
     #[error("unsupported audio mode: {0}")]
     UnsupportedAudioMode(String),
+    #[error("missing recording dependency: {0}")]
+    MissingDependency(String),
     #[error("failed to parse media metadata: {0}")]
     Metadata(String),
 }
@@ -283,6 +289,14 @@ impl RecordBackend for SystemRecordBackend {
     ) -> Result<Child, RecordError> {
         self.start_region(geometry, output, options)
     }
+}
+
+pub fn recording_backend_available() -> bool {
+    command_available(RECORDING_BACKEND_COMMAND)
+}
+
+pub fn recording_backend_requirement_message() -> String {
+    format!("recording requires `{RECORDING_BACKEND_COMMAND}` to be installed")
 }
 
 pub fn start_recording(request: &RecordingRequest) -> Result<RecordingHandle, RecordError> {
@@ -395,6 +409,11 @@ pub fn start_recording_with_selection<B: RecordBackend>(
     request: &RecordingRequest,
     selection: &RecordingSelection,
 ) -> Result<RecordingHandle, RecordError> {
+    if !recording_backend_available() {
+        return Err(RecordError::MissingDependency(
+            RECORDING_BACKEND_COMMAND.to_string(),
+        ));
+    }
     let started_at = now_millis()?;
     let recording_id = format!("recording-{}", started_at.saturating_mul(1_000_000));
 
@@ -481,7 +500,14 @@ pub fn stop_recording_with(handle: &mut RecordingHandle) -> Result<RecordArtifac
         file_size_bytes: metadata.len(),
     });
     let thumbnail_path = handle.output_path.with_extension("thumb.png");
-    extract_thumbnail(&handle.output_path, &thumbnail_path)?;
+    if let Err(err) = extract_thumbnail(&handle.output_path, &thumbnail_path) {
+        tracing::warn!(
+            recording_id = %handle.recording_id,
+            ?err,
+            "failed to extract recording thumbnail; writing placeholder"
+        );
+        write_recording_placeholder_thumbnail(&thumbnail_path)?;
+    }
 
     Ok(RecordArtifact {
         recording_id: handle.recording_id.clone(),
@@ -497,7 +523,7 @@ pub fn stop_recording_with(handle: &mut RecordingHandle) -> Result<RecordArtifac
 }
 
 fn base_record_command(output: &Path, options: &ResolvedRecordingOptions) -> Command {
-    let mut command = Command::new("wl-screenrec");
+    let mut command = Command::new(RECORDING_BACKEND_COMMAND);
     command.arg("-f").arg(output);
     if let Some(size) = options.encode_resolution.as_ref() {
         command.arg("--encode-resolution").arg(size);
@@ -599,7 +625,7 @@ fn resolve_recording_options(
         },
     };
 
-    match options.audio.mode {
+    match normalized_audio_mode(options.audio.mode) {
         AudioMode::Off | AudioMode::Desktop => {}
         AudioMode::Microphone => {
             resolved.audio_device = options.audio.microphone_device.clone();
@@ -609,11 +635,7 @@ fn resolve_recording_options(
                 ));
             }
         }
-        AudioMode::Both => {
-            return Err(RecordError::UnsupportedAudioMode(
-                "desktop+microphone mode is not implemented yet".to_string(),
-            ));
-        }
+        AudioMode::Both => unreachable!("normalized audio mode should remove both"),
     }
 
     if let Some(advanced) = options.advanced.as_ref() {
@@ -649,6 +671,13 @@ fn normalize_extension(value: &str) -> String {
     }
 }
 
+fn normalized_audio_mode(mode: AudioMode) -> AudioMode {
+    match mode {
+        AudioMode::Both => AudioMode::Desktop,
+        other => other,
+    }
+}
+
 fn scale_resolution(
     size: RecordingSize,
     source_width: u32,
@@ -663,6 +692,14 @@ fn scale_resolution(
         RecordingSize::Fit1080p => fit_box(source_width, source_height, 1920, 1080),
         RecordingSize::Fit720p => fit_box(source_width, source_height, 1280, 720),
     }
+}
+
+fn command_available(command: &str) -> bool {
+    let path = std::env::var_os("PATH");
+    let Some(path) = path else {
+        return false;
+    };
+    std::env::split_paths(&path).any(|segment| segment.join(command).is_file())
 }
 
 fn parse_pactl_source(line: &str) -> Option<AudioSource> {
@@ -747,7 +784,7 @@ fn extract_thumbnail(video_path: &Path, thumbnail_path: &Path) -> Result<(), Rec
             "-vframes",
             "1",
             "-vf",
-            "scale=320:-1",
+            &format!("scale={RECORDING_THUMBNAIL_WIDTH}:-1"),
             thumbnail_path.to_string_lossy().as_ref(),
         ])
         .stdout(Stdio::null())
@@ -765,6 +802,17 @@ fn extract_thumbnail(video_path: &Path, thumbnail_path: &Path) -> Result<(), Rec
             message: format!("exit status {:?}", status.code()),
         })
     }
+}
+
+fn write_recording_placeholder_thumbnail(thumbnail_path: &Path) -> Result<(), RecordError> {
+    let thumbnail = RgbaImage::from_pixel(
+        RECORDING_THUMBNAIL_WIDTH,
+        RECORDING_THUMBNAIL_HEIGHT,
+        Rgba([24, 24, 24, 255]),
+    );
+    thumbnail
+        .save(thumbnail_path)
+        .map_err(|err| RecordError::Metadata(err.to_string()))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -871,8 +919,8 @@ mod tests {
     }
 
     #[test]
-    fn resolve_recording_options_rejects_unimplemented_audio_mix() {
-        let err = resolve_recording_options(
+    fn resolve_recording_options_normalizes_audio_mix_to_desktop() {
+        let resolved = resolve_recording_options(
             &RecordingOptions {
                 audio: AudioConfig {
                     mode: AudioMode::Both,
@@ -883,7 +931,26 @@ mod tests {
             1920,
             1080,
         )
-        .expect_err("both audio should reject");
-        assert!(matches!(err, RecordError::UnsupportedAudioMode(_)));
+        .expect("both audio should normalize");
+        assert!(resolved.audio_enabled);
+        assert_eq!(resolved.audio_device, None);
+    }
+
+    #[test]
+    fn recording_backend_requirement_message_mentions_backend() {
+        assert!(recording_backend_requirement_message().contains(RECORDING_BACKEND_COMMAND));
+    }
+
+    #[test]
+    fn write_recording_placeholder_thumbnail_creates_png() {
+        let thumbnail_path = std::env::temp_dir().join(format!(
+            "jjaeng-recording-thumb-{}.png",
+            now_millis().expect("timestamp")
+        ));
+        write_recording_placeholder_thumbnail(&thumbnail_path).expect("placeholder thumbnail");
+        let image = image::open(&thumbnail_path).expect("thumbnail image");
+        assert_eq!(image.width(), RECORDING_THUMBNAIL_WIDTH);
+        assert_eq!(image.height(), RECORDING_THUMBNAIL_HEIGHT);
+        let _ = std::fs::remove_file(thumbnail_path);
     }
 }
