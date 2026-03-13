@@ -8,12 +8,15 @@ use std::thread;
 use serde::{Deserialize, Serialize};
 
 use crate::identity::{APP_RUNTIME_SOCKET, APP_STATUS_SNAPSHOT, DEFAULT_RUNTIME_DIR};
+use crate::recording::RecordingRequest;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum RemoteCommand {
     CaptureFull,
     CaptureRegion,
     CaptureWindow,
+    StartRecording(RecordingRequest),
+    StopRecording,
     OpenHistory,
     ToggleHistory,
     OpenPreview,
@@ -37,6 +40,9 @@ pub struct StatusSnapshot {
     pub capture_count: usize,
     pub preview_count: usize,
     pub editor_open: bool,
+    pub recording: bool,
+    pub recording_duration_ms: Option<u64>,
+    pub recording_id: Option<String>,
 }
 
 pub fn command_socket_path() -> PathBuf {
@@ -145,6 +151,9 @@ pub fn read_status_snapshot_json() -> io::Result<String> {
             capture_count: 0,
             preview_count: 0,
             editor_open: false,
+            recording: false,
+            recording_duration_ms: None,
+            recording_id: None,
         };
         return serde_json::to_string(&snapshot).map_err(io::Error::other);
     }

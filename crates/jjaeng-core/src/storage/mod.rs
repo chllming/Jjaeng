@@ -5,10 +5,13 @@ use std::time::{Duration, SystemTime};
 
 use crate::capture::CaptureArtifact;
 use crate::identity::DEFAULT_RUNTIME_DIR;
+use crate::recording::RecordArtifact;
 use thiserror::Error;
 
 const DEFAULT_TEMP_PREFIX: &str = "capture_";
+const DEFAULT_RECORDING_TEMP_PREFIX: &str = "recording_";
 const PREVIEW_SUBDIR: &str = "Pictures";
+const RECORDING_SUBDIR: &str = "Videos/jjaeng";
 #[derive(Debug, Error)]
 pub enum StorageError {
     #[error("missing HOME environment variable")]
@@ -33,34 +36,45 @@ pub trait CaptureStorage {
     fn discard_session_artifacts(&self, capture_id: &str) -> StorageResult<()>;
 }
 
+pub trait RecordingStorage {
+    fn save_recording(&self, artifact: &RecordArtifact) -> StorageResult<PathBuf>;
+}
+
 #[derive(Debug, Clone)]
 pub struct StorageService {
     temp_dir: PathBuf,
     pictures_dir: PathBuf,
+    videos_dir: PathBuf,
 }
 
 impl StorageService {
-    pub const fn with_paths(temp_dir: PathBuf, pictures_dir: PathBuf) -> Self {
+    pub const fn with_paths(temp_dir: PathBuf, pictures_dir: PathBuf, videos_dir: PathBuf) -> Self {
         Self {
             temp_dir,
             pictures_dir,
+            videos_dir,
         }
     }
 
     pub fn with_default_paths() -> StorageResult<Self> {
-        Self::with_runtime_paths(None)
+        Self::with_runtime_paths(None, None)
     }
 
-    pub fn with_runtime_paths(configured_pictures_dir: Option<PathBuf>) -> StorageResult<Self> {
+    pub fn with_runtime_paths(
+        configured_pictures_dir: Option<PathBuf>,
+        configured_videos_dir: Option<PathBuf>,
+    ) -> StorageResult<Self> {
         let home = std::env::var("HOME").map_err(|_| StorageError::MissingHomeDirectory)?;
         let home = PathBuf::from(home);
         let temp_dir = default_runtime_temp_dir();
         let pictures_dir = resolve_pictures_dir(&home, configured_pictures_dir);
+        let videos_dir = resolve_videos_dir(&home, configured_videos_dir);
 
         fs::create_dir_all(&temp_dir)?;
         fs::create_dir_all(&pictures_dir)?;
+        fs::create_dir_all(&videos_dir)?;
 
-        Ok(Self::with_paths(temp_dir, pictures_dir))
+        Ok(Self::with_paths(temp_dir, pictures_dir, videos_dir))
     }
 
     pub fn temp_dir(&self) -> &Path {
@@ -69,6 +83,10 @@ impl StorageService {
 
     pub fn pictures_dir(&self) -> &Path {
         &self.pictures_dir
+    }
+
+    pub fn videos_dir(&self) -> &Path {
+        &self.videos_dir
     }
 
     fn validate_capture_id(capture_id: &str) -> StorageResult<()> {
@@ -104,9 +122,44 @@ impl StorageService {
         Ok(path)
     }
 
+    pub fn allocate_recording_target_path_with_extension(
+        &self,
+        recording_id: &str,
+        extension: &str,
+    ) -> StorageResult<PathBuf> {
+        Self::validate_capture_id(recording_id)?;
+        let extension = extension.trim().trim_start_matches('.');
+        if extension.is_empty() {
+            return Err(StorageError::MissingFileExtension);
+        }
+        let mut path = self.videos_dir.clone();
+        path.push(format!("{recording_id}.{extension}"));
+        Ok(path)
+    }
+
     pub fn save_capture(&self, artifact: &CaptureArtifact) -> StorageResult<PathBuf> {
         let target = self.allocate_target_path(&artifact.capture_id)?;
         save_overwrite(&artifact.temp_path, &target)?;
+        Ok(target)
+    }
+
+    pub fn save_recording(&self, artifact: &RecordArtifact) -> StorageResult<PathBuf> {
+        let extension = artifact
+            .output_path
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("mp4");
+        self.save_recording_path(&artifact.recording_id, &artifact.output_path, extension)
+    }
+
+    pub fn save_recording_path(
+        &self,
+        recording_id: &str,
+        source: &Path,
+        extension: &str,
+    ) -> StorageResult<PathBuf> {
+        let target = self.allocate_recording_target_path_with_extension(recording_id, extension)?;
+        save_overwrite(source, &target)?;
         Ok(target)
     }
 
@@ -177,9 +230,29 @@ impl CaptureStorage for StorageService {
     }
 }
 
+impl RecordingStorage for StorageService {
+    fn save_recording(&self, artifact: &RecordArtifact) -> StorageResult<PathBuf> {
+        self.save_recording(artifact)
+    }
+}
+
 pub fn create_temp_capture(capture_id: &str) -> PathBuf {
     let mut path = default_runtime_temp_dir();
     path.push(format!("{DEFAULT_TEMP_PREFIX}{capture_id}.png"));
+    path
+}
+
+pub fn create_temp_recording(recording_id: &str, extension: &str) -> PathBuf {
+    let mut path = default_runtime_temp_dir();
+    let extension = extension.trim().trim_start_matches('.');
+    let extension = if extension.is_empty() {
+        "mp4"
+    } else {
+        extension
+    };
+    path.push(format!(
+        "{DEFAULT_RECORDING_TEMP_PREFIX}{recording_id}.{extension}"
+    ));
     path
 }
 
@@ -208,6 +281,14 @@ fn resolve_pictures_dir(home: &Path, configured_pictures_dir: Option<PathBuf>) -
     }
 }
 
+fn resolve_videos_dir(home: &Path, configured_videos_dir: Option<PathBuf>) -> PathBuf {
+    match configured_videos_dir {
+        Some(path) if path.is_absolute() => path,
+        Some(path) => home.join(path),
+        None => home.join(RECORDING_SUBDIR),
+    }
+}
+
 fn default_runtime_temp_dir() -> PathBuf {
     std::env::var("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
@@ -228,16 +309,22 @@ mod tests {
 
     #[test]
     fn allocate_target_path_uses_capture_id_filename() {
-        let service =
-            StorageService::with_paths(PathBuf::from("/tmp"), PathBuf::from("/home/test/Pictures"));
+        let service = StorageService::with_paths(
+            PathBuf::from("/tmp"),
+            PathBuf::from("/home/test/Pictures"),
+            PathBuf::from("/home/test/Videos"),
+        );
         let path = service.allocate_target_path("abc").unwrap();
         assert_eq!(path, PathBuf::from("/home/test/Pictures/abc.png"));
     }
 
     #[test]
     fn allocate_target_path_with_extension_uses_requested_extension() {
-        let service =
-            StorageService::with_paths(PathBuf::from("/tmp"), PathBuf::from("/home/test/Pictures"));
+        let service = StorageService::with_paths(
+            PathBuf::from("/tmp"),
+            PathBuf::from("/home/test/Pictures"),
+            PathBuf::from("/home/test/Videos"),
+        );
         let path = service
             .allocate_target_path_with_extension("abc", "jpg")
             .unwrap();
@@ -261,7 +348,11 @@ mod tests {
 
     #[test]
     fn lifecycle_cleanup_save_overwrite_and_discard_keeps_saved_output() {
-        let service = StorageService::with_paths(PathBuf::from("/tmp"), std::env::temp_dir());
+        let service = StorageService::with_paths(
+            PathBuf::from("/tmp"),
+            std::env::temp_dir(),
+            std::env::temp_dir(),
+        );
         let source = service.temp_path_for_capture("artifact-1").unwrap();
         let source_data = b"png";
 
@@ -290,5 +381,18 @@ mod tests {
         assert!(!source.exists());
         assert!(copied_path.exists());
         assert_eq!(std::fs::read(copied_path).unwrap(), source_data);
+    }
+
+    #[test]
+    fn allocate_recording_target_path_uses_recording_id_filename() {
+        let service = StorageService::with_paths(
+            PathBuf::from("/tmp"),
+            PathBuf::from("/home/test/Pictures"),
+            PathBuf::from("/home/test/Videos"),
+        );
+        let path = service
+            .allocate_recording_target_path_with_extension("rec", "mp4")
+            .unwrap();
+        assert_eq!(path, PathBuf::from("/home/test/Videos/rec.mp4"));
     }
 }

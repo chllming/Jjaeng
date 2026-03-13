@@ -28,10 +28,12 @@ impl StateMachine {
         match (self.state, event) {
             (AppState::Idle, Start) => Some(AppState::Idle),
             (AppState::Idle, OpenPreview) => Some(AppState::Preview),
+            (AppState::Idle, StartRecording) => Some(AppState::Recording),
             (AppState::Preview, OpenPreview) => Some(AppState::Preview),
             (AppState::Preview, OpenEditor) => Some(AppState::Editor),
             (AppState::Editor, CloseEditor) => Some(AppState::Preview),
             (AppState::Preview, ClosePreview) => Some(AppState::Idle),
+            (AppState::Recording, StopRecording) => Some(AppState::Idle),
             _ => None,
         }
     }
@@ -80,6 +82,7 @@ mod tests {
         let mut machine = StateMachine::new();
         assert!(machine.can_transition(AppEvent::Start));
         assert!(machine.can_transition(AppEvent::OpenPreview));
+        assert!(machine.can_transition(AppEvent::StartRecording));
         assert!(!machine.can_transition(AppEvent::CloseEditor));
 
         let _ = machine
@@ -88,6 +91,7 @@ mod tests {
 
         assert!(machine.can_transition(AppEvent::OpenEditor));
         assert!(machine.can_transition(AppEvent::ClosePreview));
+        assert!(!machine.can_transition(AppEvent::StartRecording));
         assert!(!machine.can_transition(AppEvent::Start));
     }
 
@@ -155,5 +159,23 @@ mod tests {
         ));
         assert_eq!(machine.state(), AppState::Idle);
         assert!(machine.history().is_empty());
+    }
+
+    #[test]
+    fn recording_transitions_are_idle_only() {
+        let mut machine = StateMachine::new();
+
+        machine
+            .transition(AppEvent::StartRecording)
+            .expect("idle -> recording should work");
+        assert_eq!(machine.state(), AppState::Recording);
+        assert!(!machine.can_transition(AppEvent::OpenPreview));
+        assert!(!machine.can_transition(AppEvent::OpenEditor));
+        assert!(machine.can_transition(AppEvent::StopRecording));
+
+        machine
+            .transition(AppEvent::StopRecording)
+            .expect("recording -> idle should work");
+        assert_eq!(machine.state(), AppState::Idle);
     }
 }

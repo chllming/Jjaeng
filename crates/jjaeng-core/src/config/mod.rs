@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use crate::identity::{config_dir_candidates, APP_SLUG};
+use crate::recording::{AudioMode, RecordingEncodingPreset, RecordingSize, RecordingTarget};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConfigPathError {
@@ -18,6 +19,18 @@ pub struct AppConfig {
     pub ocr_language: Option<String>,
     #[serde(default)]
     pub screenshot_dir: Option<PathBuf>,
+    #[serde(default)]
+    pub recording_dir: Option<PathBuf>,
+    #[serde(default)]
+    pub recording_size: Option<RecordingSize>,
+    #[serde(default)]
+    pub recording_encoding_preset: Option<RecordingEncodingPreset>,
+    #[serde(default)]
+    pub recording_audio_mode: Option<AudioMode>,
+    #[serde(default)]
+    pub recording_mic_device: Option<String>,
+    #[serde(default)]
+    pub recording_target: Option<RecordingTarget>,
 }
 
 pub fn load_app_config() -> AppConfig {

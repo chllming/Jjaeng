@@ -11,6 +11,7 @@ pub mod logging;
 pub mod notification;
 pub mod ocr;
 pub mod preview;
+pub mod recording;
 pub mod service;
 pub mod state;
 pub mod storage;

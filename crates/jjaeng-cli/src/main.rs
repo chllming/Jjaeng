@@ -54,6 +54,14 @@ Options:
   --full, --capture-full        Start with full screen capture
   --region, --capture-region    Start with region capture
   --window, --capture-window    Start with window capture
+  --record-full                 Start fullscreen recording
+  --record-region               Start region recording
+  --record-window               Start window recording
+  --stop-recording              Stop the active recording
+  --record-size=<preset>        Recording size: native|half|1080p|720p
+  --record-encoding=<preset>    Recording preset: standard|quality|small
+  --record-audio=<mode>         Recording audio: off|desktop|mic
+  --record-mic=<source>         Pulse/PipeWire source name for microphone mode
   --launchpad                   Show the launchpad
   --history, --open-history     Show the screenshot history window
   --toggle-history              Toggle the screenshot history window

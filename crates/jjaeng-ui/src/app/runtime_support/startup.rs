@@ -1,3 +1,7 @@
+use jjaeng_core::config::{load_app_config, AppConfig};
+use jjaeng_core::recording::{
+    AudioMode, RecordingEncodingPreset, RecordingRequest, RecordingSize, RecordingTarget,
+};
 use jjaeng_core::service::RemoteCommand;
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -9,7 +13,7 @@ pub enum StartupCaptureMode {
     Window,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct StartupConfig {
     pub capture: StartupCaptureMode,
     pub show_launchpad: bool,
@@ -29,6 +33,7 @@ impl StartupConfig {
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
+        let app_config = load_app_config();
         let mut config = Self {
             capture: StartupCaptureMode::None,
             show_launchpad: false,
@@ -37,6 +42,7 @@ impl StartupConfig {
             remote_command: None,
             print_status_json: false,
         };
+        let mut recording_request: Option<RecordingRequest> = None;
 
         for arg in args {
             match arg.as_ref() {
@@ -51,6 +57,28 @@ impl StartupConfig {
                 "--capture-window" | "--window" => {
                     config.capture = StartupCaptureMode::Window;
                     config.remote_command = Some(RemoteCommand::CaptureWindow);
+                }
+                "--record-full" => {
+                    recording_request = Some(default_recording_request(
+                        &app_config,
+                        RecordingTarget::Fullscreen,
+                    ));
+                }
+                "--record-region" => {
+                    recording_request = Some(default_recording_request(
+                        &app_config,
+                        RecordingTarget::Region,
+                    ));
+                }
+                "--record-window" => {
+                    recording_request = Some(default_recording_request(
+                        &app_config,
+                        RecordingTarget::Window,
+                    ));
+                }
+                "--stop-recording" => {
+                    recording_request = None;
+                    config.remote_command = Some(RemoteCommand::StopRecording);
                 }
                 "--launchpad" => {
                     config.show_launchpad = true;
@@ -83,11 +111,92 @@ impl StartupConfig {
                 "--status-json" => {
                     config.print_status_json = true;
                 }
+                _ if arg.as_ref().starts_with("--record-size=") => {
+                    if let Some(request) = recording_request.as_mut() {
+                        if let Some(size) = parse_recording_size(arg.as_ref()) {
+                            request.options.size = size;
+                        }
+                    }
+                }
+                _ if arg.as_ref().starts_with("--record-encoding=") => {
+                    if let Some(request) = recording_request.as_mut() {
+                        if let Some(encoding) = parse_recording_encoding(arg.as_ref()) {
+                            request.options.encoding = encoding;
+                        }
+                    }
+                }
+                _ if arg.as_ref().starts_with("--record-audio=") => {
+                    if let Some(request) = recording_request.as_mut() {
+                        if let Some(audio_mode) = parse_recording_audio(arg.as_ref()) {
+                            request.options.audio.mode = audio_mode;
+                        }
+                    }
+                }
+                _ if arg.as_ref().starts_with("--record-mic=") => {
+                    if let Some(request) = recording_request.as_mut() {
+                        request.options.audio.microphone_device =
+                            parse_key_value(arg.as_ref()).map(str::to_string);
+                    }
+                }
                 _ => {}
             }
         }
 
+        if let Some(request) = recording_request {
+            config.remote_command = Some(RemoteCommand::StartRecording(request));
+        }
+
         config
+    }
+}
+
+fn default_recording_request(app_config: &AppConfig, target: RecordingTarget) -> RecordingRequest {
+    let mut request = RecordingRequest::new(target);
+    if let Some(size) = app_config.recording_size {
+        request.options.size = size;
+    }
+    if let Some(encoding) = app_config.recording_encoding_preset {
+        request.options.encoding = encoding;
+    }
+    if let Some(audio_mode) = app_config.recording_audio_mode {
+        request.options.audio.mode = audio_mode;
+    }
+    request.options.audio.microphone_device = app_config.recording_mic_device.clone();
+    request
+}
+
+fn parse_key_value(arg: &str) -> Option<&str> {
+    arg.split_once('=')
+        .map(|(_, value)| value.trim())
+        .filter(|value| !value.is_empty())
+}
+
+fn parse_recording_size(arg: &str) -> Option<RecordingSize> {
+    match parse_key_value(arg)? {
+        "native" => Some(RecordingSize::Native),
+        "half" => Some(RecordingSize::Half),
+        "1080p" | "fit1080p" => Some(RecordingSize::Fit1080p),
+        "720p" | "fit720p" => Some(RecordingSize::Fit720p),
+        _ => None,
+    }
+}
+
+fn parse_recording_encoding(arg: &str) -> Option<RecordingEncodingPreset> {
+    match parse_key_value(arg)? {
+        "standard" => Some(RecordingEncodingPreset::Standard),
+        "quality" | "high" | "high-quality" => Some(RecordingEncodingPreset::HighQuality),
+        "small" | "small-file" => Some(RecordingEncodingPreset::SmallFile),
+        _ => None,
+    }
+}
+
+fn parse_recording_audio(arg: &str) -> Option<AudioMode> {
+    match parse_key_value(arg)? {
+        "off" | "none" => Some(AudioMode::Off),
+        "desktop" => Some(AudioMode::Desktop),
+        "mic" | "microphone" => Some(AudioMode::Microphone),
+        "both" => Some(AudioMode::Both),
+        _ => None,
     }
 }
 
@@ -144,5 +253,28 @@ mod tests {
     fn startup_config_last_capture_flag_wins() {
         let config = StartupConfig::from_iter(["--full", "--region", "--window"]);
         assert!(matches!(config.capture, StartupCaptureMode::Window));
+    }
+
+    #[test]
+    fn startup_config_parses_recording_request() {
+        let config = StartupConfig::from_iter([
+            "--record-region",
+            "--record-size=half",
+            "--record-encoding=small",
+            "--record-audio=desktop",
+        ]);
+        let Some(RemoteCommand::StartRecording(request)) = config.remote_command else {
+            panic!("expected recording request");
+        };
+        assert_eq!(request.target, RecordingTarget::Region);
+        assert_eq!(request.options.size, RecordingSize::Half);
+        assert_eq!(request.options.encoding, RecordingEncodingPreset::SmallFile);
+        assert_eq!(request.options.audio.mode, AudioMode::Desktop);
+    }
+
+    #[test]
+    fn startup_config_parses_stop_recording_flag() {
+        let config = StartupConfig::from_iter(["--stop-recording"]);
+        assert_eq!(config.remote_command, Some(RemoteCommand::StopRecording));
     }
 }

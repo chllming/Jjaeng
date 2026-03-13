@@ -2,9 +2,14 @@ use std::rc::Rc;
 
 use crate::ui::StyleTokens;
 use gtk4::prelude::*;
-use gtk4::{Align, Box as GtkBox, Button, Frame, Label, Orientation, ScrolledWindow};
+use gtk4::{
+    Align, Box as GtkBox, Button, ComboBoxText, Entry, Frame, Label, Orientation, ScrolledWindow,
+};
 use jjaeng_core::capture;
 use jjaeng_core::preview::PreviewAction;
+use jjaeng_core::recording::{
+    AudioMode, RecordingEncodingPreset, RecordingRequest, RecordingSize, RecordingTarget,
+};
 use jjaeng_core::state::AppState;
 
 use super::launchpad_actions::LaunchpadActionExecutor;
@@ -22,6 +27,14 @@ pub(super) struct LaunchpadUi {
     pub(super) full_capture_button: Button,
     pub(super) region_capture_button: Button,
     pub(super) window_capture_button: Button,
+    pub(super) full_record_button: Button,
+    pub(super) region_record_button: Button,
+    pub(super) window_record_button: Button,
+    pub(super) stop_recording_button: Button,
+    pub(super) record_size_combo: ComboBoxText,
+    pub(super) record_encoding_combo: ComboBoxText,
+    pub(super) record_audio_combo: ComboBoxText,
+    pub(super) record_mic_entry: Entry,
     pub(super) history_button: Button,
     pub(super) open_preview_button: Button,
     pub(super) open_editor_button: Button,
@@ -55,6 +68,19 @@ impl LaunchpadUi {
         has_capture: bool,
         ocr_available: bool,
     ) {
+        let idle = matches!(state, AppState::Idle);
+        let recording = matches!(state, AppState::Recording);
+        self.full_capture_button.set_sensitive(idle);
+        self.region_capture_button.set_sensitive(idle);
+        self.window_capture_button.set_sensitive(idle);
+        self.full_record_button.set_sensitive(idle);
+        self.region_record_button.set_sensitive(idle);
+        self.window_record_button.set_sensitive(idle);
+        self.stop_recording_button.set_sensitive(recording);
+        self.record_size_combo.set_sensitive(idle);
+        self.record_encoding_combo.set_sensitive(idle);
+        self.record_audio_combo.set_sensitive(idle);
+        self.record_mic_entry.set_sensitive(idle);
         self.history_button.set_sensitive(true);
         self.open_preview_button
             .set_sensitive(matches!(state, AppState::Idle) && has_capture);
@@ -80,6 +106,33 @@ impl LaunchpadUi {
 
     pub(super) fn set_status_text(&self, message: &str) {
         self.status_label.set_text(message);
+    }
+
+    pub(super) fn recording_request(&self, target: RecordingTarget) -> RecordingRequest {
+        let mut request = RecordingRequest::new(target);
+        request.options.size = match self.record_size_combo.active_id().as_deref() {
+            Some("half") => RecordingSize::Half,
+            Some("fit1080p") => RecordingSize::Fit1080p,
+            Some("fit720p") => RecordingSize::Fit720p,
+            _ => RecordingSize::Native,
+        };
+        request.options.encoding = match self.record_encoding_combo.active_id().as_deref() {
+            Some("quality") => RecordingEncodingPreset::HighQuality,
+            Some("small") => RecordingEncodingPreset::SmallFile,
+            _ => RecordingEncodingPreset::Standard,
+        };
+        request.options.audio.mode = match self.record_audio_combo.active_id().as_deref() {
+            Some("desktop") => AudioMode::Desktop,
+            Some("microphone") => AudioMode::Microphone,
+            _ => AudioMode::Off,
+        };
+        let microphone_device = self.record_mic_entry.text().trim().to_string();
+        request.options.audio.microphone_device = if microphone_device.is_empty() {
+            None
+        } else {
+            Some(microphone_device)
+        };
+        request
     }
 }
 
@@ -147,10 +200,19 @@ pub(super) struct LaunchpadSettingsInfo {
     pub(super) keybinding_config_path: String,
 }
 
+#[derive(Debug, Clone)]
+pub(super) struct LaunchpadRecordingDefaults {
+    pub(super) size: RecordingSize,
+    pub(super) encoding: RecordingEncodingPreset,
+    pub(super) audio_mode: AudioMode,
+    pub(super) microphone_device: Option<String>,
+}
+
 pub(super) fn build_launchpad_ui(
     style_tokens: StyleTokens,
     show_launchpad: bool,
     settings_info: &LaunchpadSettingsInfo,
+    recording_defaults: LaunchpadRecordingDefaults,
 ) -> LaunchpadUi {
     let root = GtkBox::new(Orientation::Vertical, style_tokens.spacing_12);
     root.set_margin_top(style_tokens.spacing_12);
@@ -200,6 +262,103 @@ pub(super) fn build_launchpad_ui(
     capture_row.append(&region_capture_button);
     capture_row.append(&window_capture_button);
     let capture_panel = launchpad_panel(style_tokens, "Capture", &capture_row);
+
+    let full_record_button = Button::with_label("Record Full");
+    full_record_button.add_css_class("launchpad-primary-button");
+    full_record_button.set_hexpand(true);
+    let region_record_button = Button::with_label("Record Region");
+    region_record_button.set_hexpand(true);
+    let window_record_button = Button::with_label("Record Window");
+    window_record_button.set_hexpand(true);
+    let stop_recording_button = Button::with_label("Stop Recording");
+    stop_recording_button.add_css_class("launchpad-danger-button");
+    stop_recording_button.set_hexpand(true);
+
+    let record_target_row = GtkBox::new(Orientation::Horizontal, style_tokens.spacing_8);
+    record_target_row.append(&full_record_button);
+    record_target_row.append(&region_record_button);
+    record_target_row.append(&window_record_button);
+    record_target_row.append(&stop_recording_button);
+
+    let record_size_combo = ComboBoxText::new();
+    record_size_combo.append(Some("native"), "Native");
+    record_size_combo.append(Some("half"), "Half");
+    record_size_combo.append(Some("fit1080p"), "1080p");
+    record_size_combo.append(Some("fit720p"), "720p");
+    record_size_combo.set_active_id(Some(match recording_defaults.size {
+        RecordingSize::Native => "native",
+        RecordingSize::Half => "half",
+        RecordingSize::Fit1080p => "fit1080p",
+        RecordingSize::Fit720p => "fit720p",
+    }));
+
+    let record_encoding_combo = ComboBoxText::new();
+    record_encoding_combo.append(Some("standard"), "Standard");
+    record_encoding_combo.append(Some("quality"), "High Quality");
+    record_encoding_combo.append(Some("small"), "Small File");
+    record_encoding_combo.set_active_id(Some(match recording_defaults.encoding {
+        RecordingEncodingPreset::Standard => "standard",
+        RecordingEncodingPreset::HighQuality => "quality",
+        RecordingEncodingPreset::SmallFile => "small",
+    }));
+
+    let record_audio_combo = ComboBoxText::new();
+    record_audio_combo.append(Some("off"), "No Audio");
+    record_audio_combo.append(Some("desktop"), "Desktop");
+    record_audio_combo.append(Some("microphone"), "Mic");
+    record_audio_combo.set_active_id(Some(match recording_defaults.audio_mode {
+        AudioMode::Off => "off",
+        AudioMode::Desktop => "desktop",
+        AudioMode::Microphone => "microphone",
+        AudioMode::Both => "desktop",
+    }));
+
+    let record_mic_entry = Entry::new();
+    record_mic_entry.set_placeholder_text(Some("Microphone source name"));
+    if let Some(device) = recording_defaults.microphone_device.as_deref() {
+        record_mic_entry.set_text(device);
+    }
+    record_mic_entry.set_hexpand(true);
+
+    let recording_controls = GtkBox::new(Orientation::Horizontal, style_tokens.spacing_8);
+    recording_controls.add_css_class("launchpad-recording-controls");
+    let size_label = Label::new(Some("Size"));
+    size_label.add_css_class("launchpad-kv-key");
+    recording_controls.append(&size_label);
+    recording_controls.append(&record_size_combo);
+    let encoding_label = Label::new(Some("Encoding"));
+    encoding_label.add_css_class("launchpad-kv-key");
+    recording_controls.append(&encoding_label);
+    recording_controls.append(&record_encoding_combo);
+    let audio_label = Label::new(Some("Audio"));
+    audio_label.add_css_class("launchpad-kv-key");
+    recording_controls.append(&audio_label);
+    recording_controls.append(&record_audio_combo);
+
+    let mic_row = GtkBox::new(Orientation::Horizontal, style_tokens.spacing_8);
+    mic_row.add_css_class("launchpad-recording-mic-row");
+    let mic_label = Label::new(Some("Mic"));
+    mic_label.add_css_class("launchpad-kv-key");
+    mic_row.append(&mic_label);
+    mic_row.append(&record_mic_entry);
+    mic_row.set_visible(matches!(
+        recording_defaults.audio_mode,
+        AudioMode::Microphone
+    ));
+
+    {
+        let mic_row = mic_row.clone();
+        record_audio_combo.connect_changed(move |combo| {
+            let visible = matches!(combo.active_id().as_deref(), Some("microphone"));
+            mic_row.set_visible(visible);
+        });
+    }
+
+    let recording_content = GtkBox::new(Orientation::Vertical, style_tokens.spacing_8);
+    recording_content.append(&record_target_row);
+    recording_content.append(&recording_controls);
+    recording_content.append(&mic_row);
+    let recording_panel = launchpad_panel(style_tokens, "Recording", &recording_content);
 
     // ── Session panel (key-value grid) ──
     let state_label = Label::new(Some("initializing"));
@@ -304,6 +463,7 @@ pub(super) fn build_launchpad_ui(
     // ── Scrollable content area ──
     let launchpad_content = GtkBox::new(Orientation::Vertical, style_tokens.spacing_12);
     launchpad_content.append(&capture_panel);
+    launchpad_content.append(&recording_panel);
     launchpad_content.append(&info_row);
     launchpad_content.append(&actions_panel);
 
@@ -346,6 +506,14 @@ pub(super) fn build_launchpad_ui(
         full_capture_button,
         region_capture_button,
         window_capture_button,
+        full_record_button,
+        region_record_button,
+        window_record_button,
+        stop_recording_button,
+        record_size_combo,
+        record_encoding_combo,
+        record_audio_combo,
+        record_mic_entry,
         history_button,
         open_preview_button,
         open_editor_button,
@@ -379,6 +547,8 @@ pub(super) fn connect_launchpad_default_buttons<R: Fn() + 'static + ?Sized>(
     launchpad: &LaunchpadUi,
     launchpad_actions: &LaunchpadActionExecutor,
     open_history_window: &Rc<dyn Fn()>,
+    start_recording: &Rc<dyn Fn(RecordingRequest)>,
+    stop_recording: &Rc<dyn Fn()>,
     render: &Rc<R>,
 ) {
     {
@@ -427,6 +597,44 @@ pub(super) fn connect_launchpad_default_buttons<R: Fn() + 'static + ?Sized>(
                     (render.as_ref())();
                 },
             );
+        });
+    }
+    {
+        let launchpad = launchpad.clone();
+        let start_recording = start_recording.clone();
+        let render = render.clone();
+        let button = launchpad.full_record_button.clone();
+        button.connect_clicked(move |_| {
+            (start_recording.as_ref())(launchpad.recording_request(RecordingTarget::Fullscreen));
+            (render.as_ref())();
+        });
+    }
+    {
+        let launchpad = launchpad.clone();
+        let start_recording = start_recording.clone();
+        let render = render.clone();
+        let button = launchpad.region_record_button.clone();
+        button.connect_clicked(move |_| {
+            (start_recording.as_ref())(launchpad.recording_request(RecordingTarget::Region));
+            (render.as_ref())();
+        });
+    }
+    {
+        let launchpad = launchpad.clone();
+        let start_recording = start_recording.clone();
+        let render = render.clone();
+        let button = launchpad.window_record_button.clone();
+        button.connect_clicked(move |_| {
+            (start_recording.as_ref())(launchpad.recording_request(RecordingTarget::Window));
+            (render.as_ref())();
+        });
+    }
+    {
+        let stop_recording = stop_recording.clone();
+        let render = render.clone();
+        launchpad.stop_recording_button.connect_clicked(move |_| {
+            (stop_recording.as_ref())();
+            (render.as_ref())();
         });
     }
     {

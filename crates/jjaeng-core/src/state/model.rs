@@ -4,4 +4,5 @@ pub enum AppState {
     Idle,
     Preview,
     Editor,
+    Recording,
 }

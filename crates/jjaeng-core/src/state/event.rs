@@ -7,6 +7,8 @@ pub enum AppEvent {
     OpenEditor,
     CloseEditor,
     ClosePreview,
+    StartRecording,
+    StopRecording,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

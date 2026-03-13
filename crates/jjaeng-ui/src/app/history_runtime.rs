@@ -1,4 +1,5 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
+use std::process::Command;
 use std::rc::Rc;
 
 use gtk4::prelude::*;
@@ -40,6 +41,17 @@ pub(super) struct HistoryWindowRuntime {
     count_label: Label,
     empty_state_label: Label,
     flow_box: FlowBox,
+    filter: Rc<Cell<HistoryFilter>>,
+    all_filter_button: Button,
+    image_filter_button: Button,
+    video_filter_button: Button,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum HistoryFilter {
+    All,
+    Images,
+    Videos,
 }
 
 pub(super) fn present_history_window(context: &HistoryRenderContext, render: &Rc<dyn Fn()>) {
@@ -48,7 +60,7 @@ pub(super) fn present_history_window(context: &HistoryRenderContext, render: &Rc
         runtime
     } else {
         close_duplicate_history_windows(&context.app, None);
-        let runtime = build_history_window(context);
+        let runtime = build_history_window(context, render);
         context.history_window.borrow_mut().replace(runtime.clone());
         runtime
     };
@@ -108,26 +120,53 @@ pub(super) fn refresh_history_window_if_open(
         }
     };
 
-    runtime.count_label.set_text(&format!(
-        "{} item{}",
-        entries.len(),
-        if entries.len() == 1 { "" } else { "s" }
-    ));
-    runtime.empty_state_label.set_visible(entries.is_empty());
-    if entries.is_empty() {
+    sync_history_filter_buttons(&runtime);
+    let filtered_entries = entries
+        .iter()
+        .filter(|entry| history_filter_matches(runtime.filter.get(), entry))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    runtime
+        .count_label
+        .set_text(&if filtered_entries.len() == entries.len() {
+            format!(
+                "{} item{}",
+                filtered_entries.len(),
+                if filtered_entries.len() == 1 { "" } else { "s" }
+            )
+        } else {
+            format!(
+                "{} of {} item{}",
+                filtered_entries.len(),
+                entries.len(),
+                if entries.len() == 1 { "" } else { "s" }
+            )
+        });
+    runtime
+        .empty_state_label
+        .set_visible(filtered_entries.is_empty());
+    if filtered_entries.is_empty() {
         runtime
             .empty_state_label
-            .set_text("Take a screenshot and it will appear here.");
+            .set_text(match runtime.filter.get() {
+                HistoryFilter::All => "Take a screenshot or recording and it will appear here.",
+                HistoryFilter::Images => "No screenshots in history yet.",
+                HistoryFilter::Videos => "No recordings in history yet.",
+            });
     }
 
     clear_flow_box(&runtime.flow_box);
-    for entry in entries {
+    for entry in filtered_entries {
         let tile = build_history_tile(context, render, &entry);
         runtime.flow_box.insert(&tile, -1);
     }
 }
 
-fn build_history_window(context: &HistoryRenderContext) -> HistoryWindowRuntime {
+fn build_history_window(
+    context: &HistoryRenderContext,
+    render: &Rc<dyn Fn()>,
+) -> HistoryWindowRuntime {
     let window = ApplicationWindow::new(&context.app);
     window.set_title(Some(HISTORY_WINDOW_TITLE));
     window.add_css_class(jjaeng_core::identity::APP_CSS_ROOT);
@@ -158,7 +197,7 @@ fn build_history_window(context: &HistoryRenderContext) -> HistoryWindowRuntime 
     title_stack.set_hexpand(true);
     title_stack.add_css_class("history-title-stack");
 
-    let kicker_label = Label::new(Some("Screenshot archive"));
+    let kicker_label = Label::new(Some("Screenshots and recordings"));
     kicker_label.add_css_class("history-kicker");
     kicker_label.set_halign(Align::Start);
     kicker_label.set_xalign(0.0);
@@ -168,7 +207,7 @@ fn build_history_window(context: &HistoryRenderContext) -> HistoryWindowRuntime 
     title_label.set_halign(Align::Start);
     title_label.set_xalign(0.0);
 
-    let subtitle_label = Label::new(Some("Copy, save, or reopen recent captures."));
+    let subtitle_label = Label::new(Some("Filter, save, copy, or reopen recent history items."));
     subtitle_label.add_css_class("history-subtitle");
     subtitle_label.set_halign(Align::Start);
     subtitle_label.set_xalign(0.0);
@@ -187,12 +226,27 @@ fn build_history_window(context: &HistoryRenderContext) -> HistoryWindowRuntime 
     shortcut_label.set_halign(Align::End);
     shortcut_label.set_xalign(1.0);
 
+    let filter_row = GtkBox::new(Orientation::Horizontal, context.style_tokens.spacing_4);
+    filter_row.set_halign(Align::Start);
+    filter_row.add_css_class("history-filter-row");
+
+    let all_filter_button = Button::with_label("All");
+    all_filter_button.add_css_class("history-filter-button");
+    let image_filter_button = Button::with_label("Images");
+    image_filter_button.add_css_class("history-filter-button");
+    let video_filter_button = Button::with_label("Videos");
+    video_filter_button.add_css_class("history-filter-button");
+    filter_row.append(&all_filter_button);
+    filter_row.append(&image_filter_button);
+    filter_row.append(&video_filter_button);
+
     meta_stack.append(&count_label);
     meta_stack.append(&shortcut_label);
 
     title_stack.append(&kicker_label);
     title_stack.append(&title_label);
     title_stack.append(&subtitle_label);
+    title_stack.append(&filter_row);
     header_row.append(&title_stack);
     header_row.append(&meta_stack);
     header_frame.set_child(Some(&header_row));
@@ -213,7 +267,9 @@ fn build_history_window(context: &HistoryRenderContext) -> HistoryWindowRuntime 
     scroller.add_css_class("history-scroller");
     scroller.set_child(Some(&flow_box));
 
-    let empty_state_label = Label::new(Some("Take a screenshot and it will appear here."));
+    let empty_state_label = Label::new(Some(
+        "Take a screenshot or recording and it will appear here.",
+    ));
     empty_state_label.add_css_class("history-empty-state");
     empty_state_label.set_halign(Align::Center);
     empty_state_label.set_valign(Align::Center);
@@ -223,6 +279,8 @@ fn build_history_window(context: &HistoryRenderContext) -> HistoryWindowRuntime 
     root.append(&empty_state_label);
     root.append(&scroller);
     window.set_child(Some(&root));
+
+    let filter = Rc::new(Cell::new(HistoryFilter::All));
 
     {
         let history_window = context.history_window.clone();
@@ -243,12 +301,46 @@ fn build_history_window(context: &HistoryRenderContext) -> HistoryWindowRuntime 
         });
         window.add_controller(key_controller);
     }
+    {
+        let filter = filter.clone();
+        let context = context.clone();
+        let render = render.clone();
+        let all_button = all_filter_button.clone();
+        all_button.connect_clicked(move |_| {
+            filter.set(HistoryFilter::All);
+            refresh_history_window_if_open(&context, &render);
+        });
+    }
+    {
+        let filter = filter.clone();
+        let context = context.clone();
+        let render = render.clone();
+        let image_button = image_filter_button.clone();
+        image_button.connect_clicked(move |_| {
+            filter.set(HistoryFilter::Images);
+            refresh_history_window_if_open(&context, &render);
+        });
+    }
+    {
+        let filter = filter.clone();
+        let context = context.clone();
+        let render = render.clone();
+        let video_button = video_filter_button.clone();
+        video_button.connect_clicked(move |_| {
+            filter.set(HistoryFilter::Videos);
+            refresh_history_window_if_open(&context, &render);
+        });
+    }
 
     HistoryWindowRuntime {
         window,
         count_label,
         empty_state_label,
         flow_box,
+        filter,
+        all_filter_button,
+        image_filter_button,
+        video_filter_button,
     }
 }
 
@@ -333,6 +425,37 @@ fn primary_monitor_geometry() -> Option<(i32, i32, i32, i32)> {
     ))
 }
 
+fn history_filter_matches(filter: HistoryFilter, entry: &HistoryEntry) -> bool {
+    match filter {
+        HistoryFilter::All => true,
+        HistoryFilter::Images => entry.is_screenshot(),
+        HistoryFilter::Videos => entry.is_recording(),
+    }
+}
+
+fn sync_history_filter_buttons(runtime: &HistoryWindowRuntime) {
+    for (button, active) in [
+        (
+            &runtime.all_filter_button,
+            runtime.filter.get() == HistoryFilter::All,
+        ),
+        (
+            &runtime.image_filter_button,
+            runtime.filter.get() == HistoryFilter::Images,
+        ),
+        (
+            &runtime.video_filter_button,
+            runtime.filter.get() == HistoryFilter::Videos,
+        ),
+    ] {
+        if active {
+            button.add_css_class("history-filter-active");
+        } else {
+            button.remove_css_class("history-filter-active");
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -379,6 +502,22 @@ fn build_history_tile(
     picture.set_hexpand(true);
     picture.set_vexpand(true);
 
+    let media_badge = Label::new(Some(if entry.is_recording() {
+        "VIDEO"
+    } else {
+        "IMAGE"
+    }));
+    media_badge.add_css_class("history-media-badge");
+    if entry.is_recording() {
+        media_badge.add_css_class("history-media-badge-video");
+    } else {
+        media_badge.add_css_class("history-media-badge-image");
+    }
+    media_badge.set_halign(Align::Start);
+    media_badge.set_valign(Align::Start);
+    media_badge.set_margin_top(context.style_tokens.spacing_8);
+    media_badge.set_margin_start(context.style_tokens.spacing_8);
+
     let action_row = GtkBox::new(Orientation::Horizontal, context.style_tokens.spacing_4);
     action_row.set_halign(Align::End);
     action_row.add_css_class("history-action-row");
@@ -386,15 +525,31 @@ fn build_history_tile(
     let save_button = Button::with_label("Save");
     save_button.add_css_class("suggested-action");
     save_button.add_css_class("history-action-button");
-    save_button.set_tooltip_text(Some("Save to the screenshot folder"));
+    save_button.set_tooltip_text(Some(if entry.is_recording() {
+        "Save to the videos folder"
+    } else {
+        "Save to the screenshot folder"
+    }));
 
-    let copy_button = Button::with_label("Copy");
+    let copy_button = Button::with_label(if entry.is_recording() {
+        "Copy Path"
+    } else {
+        "Copy"
+    });
     copy_button.add_css_class("history-action-button");
-    copy_button.set_tooltip_text(Some("Copy the image to the clipboard"));
+    copy_button.set_tooltip_text(Some(if entry.is_recording() {
+        "Copy the recording path to the clipboard"
+    } else {
+        "Copy the image to the clipboard"
+    }));
 
     let edit_button = Button::with_label("Open");
     edit_button.add_css_class("history-action-button");
-    edit_button.set_tooltip_text(Some("Open this capture in the editor"));
+    edit_button.set_tooltip_text(Some(if entry.is_recording() {
+        "Open this recording"
+    } else {
+        "Open this capture in the editor"
+    }));
 
     action_row.append(&save_button);
     action_row.append(&copy_button);
@@ -420,6 +575,7 @@ fn build_history_tile(
 
     let preview_overlay = Overlay::new();
     preview_overlay.set_child(Some(&picture));
+    preview_overlay.add_overlay(&media_badge);
     preview_overlay.add_overlay(&action_revealer);
     preview_frame.set_child(Some(&preview_overlay));
 
@@ -436,14 +592,14 @@ fn build_history_tile(
         preview_overlay.add_controller(hover_controller);
     }
 
-    let title_label = Label::new(Some(&history_capture_display_label(&entry.capture_id)));
+    let title_label = Label::new(Some(&history_capture_display_label(&entry.entry_id)));
     title_label.add_css_class("history-tile-title");
     title_label.set_halign(Align::Start);
     title_label.set_xalign(0.0);
     title_label.set_ellipsize(gtk4::pango::EllipsizeMode::End);
-    title_label.set_tooltip_text(Some(&entry.capture_id));
+    title_label.set_tooltip_text(Some(&entry.entry_id));
 
-    let meta_label = Label::new(Some(&format!("{} x {}", entry.width, entry.height)));
+    let meta_label = Label::new(Some(&history_entry_meta_label(entry)));
     meta_label.add_css_class("history-tile-meta");
     meta_label.set_halign(Align::Start);
     meta_label.set_xalign(0.0);
@@ -456,6 +612,8 @@ fn build_history_tile(
 
     let saved_label = Label::new(Some(if entry.saved_path.is_some() {
         "Saved"
+    } else if entry.is_recording() {
+        "History copy"
     } else {
         "Session only"
     }));
@@ -499,7 +657,7 @@ fn build_history_tile(
         let render = render.clone();
         let entry = entry.clone();
         edit_button.connect_clicked(move |_| {
-            open_history_entry_in_editor(&context, &entry);
+            open_history_entry(&context, &entry);
             (render.as_ref())();
         });
     }
@@ -511,7 +669,7 @@ fn build_history_tile(
         double_click.set_button(1);
         double_click.connect_pressed(move |_, n_press, _, _| {
             if n_press >= 2 {
-                open_history_entry_in_editor(&context, &entry);
+                open_history_entry(&context, &entry);
                 (render.as_ref())();
             }
         });
@@ -536,6 +694,25 @@ fn history_capture_display_label(capture_id: &str) -> String {
     )
 }
 
+fn history_entry_meta_label(entry: &HistoryEntry) -> String {
+    if entry.is_recording() {
+        let duration = entry
+            .duration_ms
+            .map(format_duration_ms)
+            .unwrap_or_else(|| "--:--".to_string());
+        format!("{duration} · {} x {}", entry.width, entry.height)
+    } else {
+        format!("{} x {}", entry.width, entry.height)
+    }
+}
+
+fn format_duration_ms(duration_ms: u64) -> String {
+    let total_seconds = duration_ms / 1000;
+    let minutes = total_seconds / 60;
+    let seconds = total_seconds % 60;
+    format!("{minutes:02}:{seconds:02}")
+}
+
 fn clear_flow_box(flow_box: &FlowBox) {
     while let Some(child) = flow_box.first_child() {
         flow_box.remove(&child);
@@ -548,44 +725,62 @@ fn save_history_entry(context: &HistoryRenderContext, entry: &HistoryEntry) {
         return;
     };
 
-    let artifact = entry.to_capture_artifact();
-    match storage_service.save_capture(&artifact) {
+    let save_result = if let Some(artifact) = entry.to_capture_artifact() {
+        storage_service.save_capture(&artifact)
+    } else {
+        let extension = entry.media_extension().unwrap_or("mp4");
+        storage_service.save_recording_path(&entry.entry_id, &entry.media_path, extension)
+    };
+
+    match save_result {
         Ok(saved_path) => {
             if let Some(history_service) = context.history_service.as_ref().as_ref() {
-                if let Err(err) = history_service.mark_saved(&entry.capture_id, &saved_path) {
+                if let Err(err) = history_service.mark_saved(&entry.entry_id, &saved_path) {
                     tracing::warn!(
-                        capture_id = %entry.capture_id,
+                        entry_id = %entry.entry_id,
                         ?err,
                         "failed to update history entry saved path"
                     );
                 }
             }
-            *context.status_log.borrow_mut() = format!("saved capture {}", entry.capture_id);
-            notification::send(format!("Saved {}", entry.capture_id));
+            *context.status_log.borrow_mut() = format!("saved {}", entry.entry_id);
+            notification::send(format!("Saved {}", entry.entry_id));
         }
         Err(err) => {
-            *context.status_log.borrow_mut() =
-                format!("save failed for {}: {err}", entry.capture_id);
+            *context.status_log.borrow_mut() = format!("save failed for {}: {err}", entry.entry_id);
             notification::send(format!("Save failed: {err}"));
         }
     }
 }
 
 fn copy_history_entry(context: &HistoryRenderContext, entry: &HistoryEntry) {
-    match WlCopyBackend.copy(&entry.image_path) {
+    match WlCopyBackend.copy(&entry.media_path) {
         Ok(()) => {
-            *context.status_log.borrow_mut() = format!("copied capture {}", entry.capture_id);
-            notification::send(format!("Copied {}", entry.capture_id));
+            *context.status_log.borrow_mut() = format!("copied {}", entry.entry_id);
+            notification::send(format!("Copied {}", entry.entry_id));
         }
         Err(err) => {
-            *context.status_log.borrow_mut() =
-                format!("copy failed for {}: {err}", entry.capture_id);
+            *context.status_log.borrow_mut() = format!("copy failed for {}: {err}", entry.entry_id);
             notification::send(format!("Copy failed: {err}"));
         }
     }
 }
 
-fn open_history_entry_in_editor(context: &HistoryRenderContext, entry: &HistoryEntry) {
+fn open_history_entry(context: &HistoryRenderContext, entry: &HistoryEntry) {
+    if entry.is_recording() {
+        match Command::new("xdg-open").arg(&entry.media_path).spawn() {
+            Ok(_) => {
+                *context.status_log.borrow_mut() = format!("opened {}", entry.entry_id);
+            }
+            Err(err) => {
+                *context.status_log.borrow_mut() =
+                    format!("open failed for {}: {err}", entry.entry_id);
+                notification::send(format!("Open failed: {err}"));
+            }
+        }
+        return;
+    }
+
     let state = context.shared_machine.borrow().state();
     if matches!(state, AppState::Editor) && *context.editor_has_unsaved_changes.borrow() {
         *context.status_log.borrow_mut() =
@@ -595,14 +790,15 @@ fn open_history_entry_in_editor(context: &HistoryRenderContext, entry: &HistoryE
     }
 
     let previous_capture_ids = context.runtime_session.borrow().ids_for_display();
-    context
-        .runtime_session
-        .borrow_mut()
-        .replace_with_capture(entry.to_capture_artifact());
+    context.runtime_session.borrow_mut().replace_with_capture(
+        entry
+            .to_capture_artifact()
+            .expect("history screenshots should convert to capture artifact"),
+    );
 
     if let Some(storage_service) = context.storage_service.as_ref().as_ref() {
         for capture_id in previous_capture_ids {
-            if capture_id == entry.capture_id {
+            if capture_id == entry.entry_id {
                 continue;
             }
             if let Err(err) = storage_service.discard_session_artifacts(&capture_id) {
@@ -623,7 +819,7 @@ fn open_history_entry_in_editor(context: &HistoryRenderContext, entry: &HistoryE
                 .transition(AppEvent::OpenPreview)
             {
                 *context.status_log.borrow_mut() =
-                    format!("cannot open preview for {}: {err}", entry.capture_id);
+                    format!("cannot open preview for {}: {err}", entry.entry_id);
                 return;
             }
             if let Err(err) = context
@@ -632,7 +828,7 @@ fn open_history_entry_in_editor(context: &HistoryRenderContext, entry: &HistoryE
                 .transition(AppEvent::OpenEditor)
             {
                 *context.status_log.borrow_mut() =
-                    format!("cannot open editor for {}: {err}", entry.capture_id);
+                    format!("cannot open editor for {}: {err}", entry.entry_id);
                 return;
             }
         }
@@ -643,12 +839,17 @@ fn open_history_entry_in_editor(context: &HistoryRenderContext, entry: &HistoryE
                 .transition(AppEvent::OpenEditor)
             {
                 *context.status_log.borrow_mut() =
-                    format!("cannot open editor for {}: {err}", entry.capture_id);
+                    format!("cannot open editor for {}: {err}", entry.entry_id);
                 return;
             }
         }
         AppState::Editor => {}
+        AppState::Recording => {
+            *context.status_log.borrow_mut() =
+                "stop recording before opening screenshots in the editor".to_string();
+            return;
+        }
     }
 
-    *context.status_log.borrow_mut() = format!("editor opened for {}", entry.capture_id);
+    *context.status_log.borrow_mut() = format!("editor opened for {}", entry.entry_id);
 }

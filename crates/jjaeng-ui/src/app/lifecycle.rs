@@ -5,11 +5,12 @@ use jjaeng_core::storage::StorageService;
 
 pub(super) fn initialize_storage_service() -> Option<StorageService> {
     let app_config = load_app_config();
-    match StorageService::with_runtime_paths(app_config.screenshot_dir) {
+    match StorageService::with_runtime_paths(app_config.screenshot_dir, app_config.recording_dir) {
         Ok(service) => {
             tracing::info!(
                 temp_dir = %service.temp_dir().display(),
                 pictures_dir = %service.pictures_dir().display(),
+                videos_dir = %service.videos_dir().display(),
                 "initialized storage service"
             );
             Some(service)

@@ -432,6 +432,14 @@ frame.launchpad-panel {{
 frame.launchpad-panel > border {{
   border: none;
 }}
+box.launchpad-recording-controls,
+box.launchpad-recording-mic-row {{
+  min-height: 32px;
+}}
+box.launchpad-recording-controls combobox,
+box.launchpad-recording-mic-row entry {{
+  min-width: 120px;
+}}
 button.launchpad-primary-button {{
   background-image: linear-gradient(
                       rgba(0, 0, 0, 0.20),
@@ -513,11 +521,34 @@ label.history-count {{
   border: {history_inner_border_width}px solid alpha({text_color}, 0.18);
   background: alpha({canvas_background}, {history_surface_alpha:.2});
 }}
+box.history-filter-row button.history-filter-button {{
+  min-height: 26px;
+  padding: 2px 10px;
+  font-size: {history_button_font_size}px;
+  border-radius: 0;
+  border: {history_inner_border_width}px solid alpha({text_color}, 0.16);
+  background: alpha({canvas_background}, {history_surface_alpha:.2});
+}}
+box.history-filter-row button.history-filter-button.history-filter-active {{
+  border-color: alpha({text_color}, 0.46);
+  background: alpha({canvas_background}, {history_tile_alpha:.2});
+}}
 frame.history-tile {{
   min-width: 264px;
 }}
 frame.history-thumbnail-frame {{
   background: alpha({canvas_background}, {history_tile_alpha:.2});
+}}
+label.history-media-badge {{
+  padding: 3px 7px;
+  border-radius: 0;
+  border: {history_inner_border_width}px solid alpha({text_color}, 0.18);
+  font-size: {history_button_font_size}px;
+  font-weight: 700;
+  background: alpha({canvas_background}, {history_tile_alpha:.2});
+}}
+label.history-media-badge-video {{
+  border-color: alpha({focus_ring_color}, 0.45);
 }}
 label.history-tile-title {{
   font-size: {history_meta_font_size}px;

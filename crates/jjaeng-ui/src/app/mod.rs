@@ -2,7 +2,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::mpsc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::ui::{install_lucide_icon_theme, StyleTokens};
 use gtk4::prelude::*;
@@ -15,6 +15,9 @@ use jjaeng_core::history::HistoryService;
 use jjaeng_core::identity::{APP_CSS_ROOT, APP_ID, APP_NAME};
 use jjaeng_core::input::ShortcutAction;
 use jjaeng_core::preview::PreviewAction;
+use jjaeng_core::recording::{
+    self, AudioMode, RecordingEncodingPreset, RecordingRequest, RecordingSize,
+};
 use jjaeng_core::service::{RemoteCommand, StatusSnapshot};
 use jjaeng_core::state::{AppEvent, AppState, StateMachine};
 use jjaeng_core::storage::StorageService;
@@ -53,6 +56,7 @@ use self::preview_runtime::*;
 use self::runtime_support::*;
 pub use self::runtime_support::{StartupCaptureMode, StartupConfig};
 use self::window_state::*;
+use self::worker::spawn_worker_action;
 
 const EDITOR_PEN_ICON_NAME: &str = "pencil-symbolic";
 type ToolOptionsRefresh = Rc<dyn Fn(ToolKind)>;
@@ -279,6 +283,30 @@ fn clear_editor_runtime_state(editor_runtime: &EditorRuntimeState) {
     editor_runtime.clear_runtime_state();
 }
 
+struct ActiveRecording {
+    handle: recording::RecordingHandle,
+    timer_source_id: gtk4::glib::SourceId,
+}
+
+#[derive(Clone, Default)]
+struct RecordingRuntimeState {
+    active: Rc<RefCell<Option<ActiveRecording>>>,
+    elapsed_ms: Rc<Cell<u64>>,
+}
+
+impl RecordingRuntimeState {
+    fn is_active(&self) -> bool {
+        self.active.borrow().is_some()
+    }
+
+    fn active_recording_id(&self) -> Option<String> {
+        self.active
+            .borrow()
+            .as_ref()
+            .map(|active| active.handle.recording_id.clone())
+    }
+}
+
 fn close_editor_if_open_and_clear(
     editor_window: &Rc<RefCell<Option<ApplicationWindow>>>,
     runtime_window_state: &Rc<RefCell<RuntimeWindowState>>,
@@ -433,7 +461,7 @@ fn run_startup_capture<R: Fn() + 'static>(
     }
 }
 
-fn startup_capture_from_remote_command(command: RemoteCommand) -> Option<StartupCaptureMode> {
+fn startup_capture_from_remote_command(command: &RemoteCommand) -> Option<StartupCaptureMode> {
     match command {
         RemoteCommand::CaptureFull => Some(StartupCaptureMode::Full),
         RemoteCommand::CaptureRegion => Some(StartupCaptureMode::Region),
@@ -442,17 +470,27 @@ fn startup_capture_from_remote_command(command: RemoteCommand) -> Option<Startup
     }
 }
 
-fn should_show_launchpad_for_remote_fallback(command: RemoteCommand) -> bool {
+fn should_show_launchpad_for_remote_fallback(command: &RemoteCommand) -> bool {
     !matches!(
+        command,
+        RemoteCommand::OpenHistory
+            | RemoteCommand::ToggleHistory
+            | RemoteCommand::StartRecording(_)
+            | RemoteCommand::StopRecording
+    )
+}
+
+fn is_history_remote_command(command: &RemoteCommand) -> bool {
+    matches!(
         command,
         RemoteCommand::OpenHistory | RemoteCommand::ToggleHistory
     )
 }
 
-fn is_history_remote_command(command: RemoteCommand) -> bool {
+fn is_recording_remote_command(command: &RemoteCommand) -> bool {
     matches!(
         command,
-        RemoteCommand::OpenHistory | RemoteCommand::ToggleHistory
+        RemoteCommand::StartRecording(_) | RemoteCommand::StopRecording
     )
 }
 
@@ -460,6 +498,8 @@ fn dispatch_remote_command(
     launchpad_actions: &LaunchpadActionExecutor,
     open_history_window: &Rc<dyn Fn()>,
     toggle_history_window: &Rc<dyn Fn()>,
+    start_recording: &Rc<dyn Fn(RecordingRequest)>,
+    stop_recording: &Rc<dyn Fn()>,
     remote_command: RemoteCommand,
     render: &Rc<dyn Fn()>,
 ) {
@@ -526,6 +566,12 @@ fn dispatch_remote_command(
             launchpad_actions.close_preview();
             (render.as_ref())();
         }
+        RemoteCommand::StartRecording(request) => {
+            (start_recording.as_ref())(request);
+        }
+        RemoteCommand::StopRecording => {
+            (stop_recording.as_ref())();
+        }
     }
 }
 
@@ -536,6 +582,7 @@ fn should_release_headless_startup_hold(
     has_active_capture: bool,
     preview_window_count: usize,
     editor_window_open: bool,
+    recording_active: bool,
 ) -> bool {
     hold_active
         && startup_capture_completed
@@ -543,6 +590,7 @@ fn should_release_headless_startup_hold(
         && !has_active_capture
         && preview_window_count == 0
         && !editor_window_open
+        && !recording_active
 }
 
 pub struct App {
@@ -566,6 +614,7 @@ impl App {
         let print_status_json = bootstrap.startup_config.print_status_json;
         let theme_config = bootstrap.theme_config;
         let editor_navigation_bindings = bootstrap.editor_navigation_bindings;
+        let app_config = jjaeng_core::config::load_app_config();
 
         if print_status_json {
             match jjaeng_core::service::read_status_snapshot_json() {
@@ -592,8 +641,8 @@ impl App {
                         message = %response.message,
                         "remote command rejected; falling back locally"
                     );
-                    if startup_capture_from_remote_command(command).is_none() {
-                        show_launchpad = should_show_launchpad_for_remote_fallback(command);
+                    if startup_capture_from_remote_command(&command).is_none() {
+                        show_launchpad = should_show_launchpad_for_remote_fallback(&command);
                         show_history = matches!(command, RemoteCommand::OpenHistory);
                         Some(command)
                     } else {
@@ -602,11 +651,11 @@ impl App {
                 }
                 Err(err) => {
                     tracing::debug!(?err, "remote daemon unavailable; falling back locally");
-                    if let Some(capture_mode) = startup_capture_from_remote_command(command) {
+                    if let Some(capture_mode) = startup_capture_from_remote_command(&command) {
                         startup_capture = capture_mode;
                         None
                     } else {
-                        show_launchpad = should_show_launchpad_for_remote_fallback(command);
+                        show_launchpad = should_show_launchpad_for_remote_fallback(&command);
                         show_history = matches!(command, RemoteCommand::OpenHistory);
                         Some(command)
                     }
@@ -652,11 +701,18 @@ impl App {
         let editor_toast = editor_runtime.toast.clone();
         let editor_close_guard = Rc::new(Cell::new(false));
         let editor_navigation_bindings = Rc::new(editor_navigation_bindings);
+        let app_config_for_activate = app_config.clone();
         let headless_startup_capture = !show_launchpad
             && !show_history
             && !matches!(startup_capture, StartupCaptureMode::None);
-        let headless_history_startup =
-            !show_launchpad && local_startup_remote_command.is_some_and(is_history_remote_command);
+        let headless_history_startup = !show_launchpad
+            && local_startup_remote_command
+                .as_ref()
+                .is_some_and(is_history_remote_command);
+        let headless_recording_startup = !show_launchpad
+            && local_startup_remote_command
+                .as_ref()
+                .is_some_and(is_recording_remote_command);
         let activate_once = Rc::new(Cell::new(false));
 
         application.connect_activate(move |app| {
@@ -670,7 +726,7 @@ impl App {
             let history_startup_hold_guard =
                 Rc::new(RefCell::new(None::<gtk4::gio::ApplicationHoldGuard>));
             let startup_capture_completed = Rc::new(Cell::new(!headless_startup_capture));
-            if headless_startup_capture || daemon_mode {
+            if headless_startup_capture || headless_recording_startup || daemon_mode {
                 tracing::info!("holding app lifecycle for headless startup capture");
                 let hold_guard =
                     <gtk4::Application as gtk4::gio::prelude::ApplicationExtManual>::hold(app);
@@ -766,7 +822,24 @@ impl App {
                     keybinding_config_path,
                 }
             };
-            let launchpad = build_launchpad_ui(style_tokens, show_launchpad, &settings_info);
+            let recording_defaults = LaunchpadRecordingDefaults {
+                size: app_config_for_activate
+                    .recording_size
+                    .unwrap_or(RecordingSize::Native),
+                encoding: app_config_for_activate
+                    .recording_encoding_preset
+                    .unwrap_or(RecordingEncodingPreset::Standard),
+                audio_mode: app_config_for_activate
+                    .recording_audio_mode
+                    .unwrap_or(AudioMode::Off),
+                microphone_device: app_config_for_activate.recording_mic_device.clone(),
+            };
+            let launchpad = build_launchpad_ui(
+                style_tokens,
+                show_launchpad,
+                &settings_info,
+                recording_defaults,
+            );
             let launchpad_toast_runtime = ToastRuntime::new(&launchpad.toast_label);
             let open_editor_button = launchpad.open_editor_button.clone();
             let close_preview_button = launchpad.close_preview_button.clone();
@@ -781,6 +854,7 @@ impl App {
             let ocr_engine: Rc<RefCell<Option<jjaeng_core::ocr::OcrEngine>>> =
                 Rc::new(RefCell::new(None));
             let ocr_in_progress = Rc::new(Cell::new(false));
+            let recording_runtime = RecordingRuntimeState::default();
             let app_for_preview = app.clone();
             let app_for_lifecycle = app.clone();
             let preview_render_context = PreviewRenderContext::new(
@@ -866,6 +940,7 @@ impl App {
                 let startup_capture_completed = startup_capture_completed.clone();
                 let history_render_context = history_render_context.clone();
                 let render_handle = render_handle.clone();
+                let recording_runtime = recording_runtime.clone();
 
                 Rc::new(move || {
                     let runtime = runtime_session.borrow();
@@ -913,6 +988,7 @@ impl App {
 
                     let preview_window_count = preview_windows.borrow().len();
                     let editor_window_open = editor_window.borrow().is_some();
+                    let recording_active = recording_runtime.is_active();
                     let status_snapshot = StatusSnapshot {
                         state: format!("{state:?}").to_ascii_lowercase(),
                         active_capture_id: active_capture
@@ -922,6 +998,10 @@ impl App {
                         capture_count: captures.len(),
                         preview_count: preview_window_count,
                         editor_open: editor_window_open,
+                        recording: recording_active,
+                        recording_duration_ms: recording_active
+                            .then_some(recording_runtime.elapsed_ms.get()),
+                        recording_id: recording_runtime.active_recording_id(),
                     };
                     if let Err(err) = jjaeng_core::service::write_status_snapshot(&status_snapshot)
                     {
@@ -935,6 +1015,7 @@ impl App {
                             has_capture,
                             preview_window_count,
                             editor_window_open,
+                            recording_active,
                         )
                     {
                         tracing::info!("releasing headless startup capture hold");
@@ -980,10 +1061,194 @@ impl App {
                 ocr_language,
                 ocr_in_progress.clone(),
             );
+            let start_recording: Rc<dyn Fn(RecordingRequest)> = {
+                let machine = machine_for_activate.clone();
+                let status_log = status_log_for_activate.clone();
+                let recording_runtime = recording_runtime.clone();
+                let render_handle = render_handle.clone();
+                Rc::new(move |request: RecordingRequest| {
+                    if recording_runtime.is_active() {
+                        *status_log.borrow_mut() = "recording already active".to_string();
+                        if let Some(render) = render_handle.borrow().as_ref() {
+                            (render.as_ref())();
+                        }
+                        return;
+                    }
+                    if !matches!(machine.borrow().state(), AppState::Idle) {
+                        *status_log.borrow_mut() =
+                            "recording can only start from idle state".to_string();
+                        if let Some(render) = render_handle.borrow().as_ref() {
+                            (render.as_ref())();
+                        }
+                        return;
+                    }
+
+                    *status_log.borrow_mut() = format!("starting {:?} recording", request.target);
+                    if let Some(render) = render_handle.borrow().as_ref() {
+                        (render.as_ref())();
+                    }
+
+                    let machine = machine.clone();
+                    let status_log = status_log.clone();
+                    let recording_runtime = recording_runtime.clone();
+                    let render_handle = render_handle.clone();
+                    let target = request.target;
+                    spawn_worker_action(
+                        move || recording::start_recording(&request),
+                        move |result| {
+                            match result {
+                                Ok(handle) => {
+                                    if let Err(err) =
+                                        machine.borrow_mut().transition(AppEvent::StartRecording)
+                                    {
+                                        *status_log.borrow_mut() =
+                                            format!("cannot enter recording state: {err}");
+                                    } else {
+                                        recording_runtime.elapsed_ms.set(0);
+                                        let elapsed_ms = recording_runtime.elapsed_ms.clone();
+                                        let render = render_handle.borrow().as_ref().cloned();
+                                        let started_at = Instant::now();
+                                        let timer_started_at = started_at;
+                                        let timer_source_id = gtk4::glib::timeout_add_local(
+                                            Duration::from_secs(1),
+                                            move || {
+                                                elapsed_ms
+                                                    .set(timer_started_at.elapsed().as_millis()
+                                                        as u64);
+                                                if let Some(render) = render.as_ref() {
+                                                    (render.as_ref())();
+                                                }
+                                                gtk4::glib::ControlFlow::Continue
+                                            },
+                                        );
+                                        recording_runtime.active.borrow_mut().replace(
+                                            ActiveRecording {
+                                                handle,
+                                                timer_source_id,
+                                            },
+                                        );
+                                        *status_log.borrow_mut() =
+                                            format!("{target:?} recording active");
+                                        jjaeng_core::notification::send("Recording started");
+                                    }
+                                }
+                                Err(err) => {
+                                    *status_log.borrow_mut() =
+                                        format!("recording failed to start: {err}");
+                                    jjaeng_core::notification::send(format!(
+                                        "Recording failed: {err}"
+                                    ));
+                                }
+                            }
+                            if let Some(render) = render_handle.borrow().as_ref() {
+                                (render.as_ref())();
+                            }
+                        },
+                    );
+                })
+            };
+            let stop_recording: Rc<dyn Fn()> = {
+                let machine = machine_for_activate.clone();
+                let status_log = status_log_for_activate.clone();
+                let recording_runtime = recording_runtime.clone();
+                let history_service = history_service_for_activate.clone();
+                let storage_service = storage_service_for_activate.clone();
+                let render_handle = render_handle.clone();
+                Rc::new(move || {
+                    if !matches!(machine.borrow().state(), AppState::Recording) {
+                        *status_log.borrow_mut() =
+                            "stop recording requires recording state".to_string();
+                        if let Some(render) = render_handle.borrow().as_ref() {
+                            (render.as_ref())();
+                        }
+                        return;
+                    }
+
+                    let Some(mut active) = recording_runtime.active.borrow_mut().take() else {
+                        *status_log.borrow_mut() = "no active recording".to_string();
+                        if let Some(render) = render_handle.borrow().as_ref() {
+                            (render.as_ref())();
+                        }
+                        return;
+                    };
+
+                    match recording::stop_recording(&mut active.handle) {
+                        Ok(artifact) => {
+                            active.timer_source_id.remove();
+                            let mut persisted = false;
+                            if let Some(history_service) = history_service.as_ref().as_ref() {
+                                match history_service.record_recording(&artifact) {
+                                    Ok(_) => {
+                                        persisted = true;
+                                    }
+                                    Err(err) => {
+                                        tracing::warn!(
+                                            recording_id = %artifact.recording_id,
+                                            ?err,
+                                            "failed to record finished video in history"
+                                        );
+                                    }
+                                }
+                            }
+                            if !persisted {
+                                if let Some(storage_service) = storage_service.as_ref().as_ref() {
+                                    match storage_service.save_recording(&artifact) {
+                                        Ok(saved_path) => {
+                                            persisted = true;
+                                            *status_log.borrow_mut() = format!(
+                                                "recording saved to {}",
+                                                saved_path.display()
+                                            );
+                                        }
+                                        Err(err) => {
+                                            tracing::warn!(
+                                                recording_id = %artifact.recording_id,
+                                                ?err,
+                                                "failed to persist finished recording"
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                            if let Err(err) =
+                                machine.borrow_mut().transition(AppEvent::StopRecording)
+                            {
+                                *status_log.borrow_mut() =
+                                    format!("cannot leave recording state: {err}");
+                            } else if persisted {
+                                *status_log.borrow_mut() =
+                                    format!("recording saved {}", artifact.recording_id);
+                            } else {
+                                *status_log.borrow_mut() = format!(
+                                    "recording stopped but could not be persisted: {}",
+                                    artifact.output_path.display()
+                                );
+                            }
+                            recording_runtime.elapsed_ms.set(0);
+                            let _ = std::fs::remove_file(&artifact.output_path);
+                            let _ = std::fs::remove_file(&artifact.thumbnail_path);
+                            jjaeng_core::notification::send("Recording stopped");
+                        }
+                        Err(err) => {
+                            *status_log.borrow_mut() = format!("recording stop failed: {err}");
+                            recording_runtime.active.borrow_mut().replace(active);
+                            jjaeng_core::notification::send(format!(
+                                "Recording stop failed: {err}"
+                            ));
+                        }
+                    }
+
+                    if let Some(render) = render_handle.borrow().as_ref() {
+                        (render.as_ref())();
+                    }
+                })
+            };
             connect_launchpad_default_buttons(
                 &launchpad,
                 &launchpad_actions,
                 &open_history_window,
+                &start_recording,
+                &stop_recording,
                 &render,
             );
 
@@ -998,6 +1263,8 @@ impl App {
                 let launchpad_actions = launchpad_actions.clone();
                 let open_history_window = open_history_window.clone();
                 let toggle_history_window = toggle_history_window.clone();
+                let start_recording_for_remote = start_recording.clone();
+                let stop_recording_for_remote = stop_recording.clone();
                 let render = render.clone();
                 gtk4::glib::timeout_add_local(Duration::from_millis(40), move || {
                     while let Ok(command) = remote_command_rx.borrow_mut().try_recv() {
@@ -1005,6 +1272,8 @@ impl App {
                             &launchpad_actions,
                             &open_history_window,
                             &toggle_history_window,
+                            &start_recording_for_remote,
+                            &stop_recording_for_remote,
                             command,
                             &render,
                         );
@@ -1022,11 +1291,13 @@ impl App {
                 }
             });
 
-            if let Some(command) = local_startup_remote_command {
+            if let Some(command) = local_startup_remote_command.clone() {
                 dispatch_remote_command(
                     &launchpad_actions,
                     &open_history_window,
                     &toggle_history_window,
+                    &start_recording,
+                    &stop_recording,
                     command,
                     &render,
                 );
@@ -1236,6 +1507,7 @@ mod tests {
             AppState::Idle,
             false,
             0,
+            false,
             false
         ));
 
@@ -1245,6 +1517,7 @@ mod tests {
             AppState::Idle,
             false,
             0,
+            false,
             false
         ));
         assert!(!should_release_headless_startup_hold(
@@ -1253,6 +1526,7 @@ mod tests {
             AppState::Idle,
             false,
             0,
+            false,
             false
         ));
         assert!(!should_release_headless_startup_hold(
@@ -1261,6 +1535,7 @@ mod tests {
             AppState::Preview,
             false,
             0,
+            false,
             false
         ));
         assert!(!should_release_headless_startup_hold(
@@ -1269,6 +1544,7 @@ mod tests {
             AppState::Idle,
             true,
             0,
+            false,
             false
         ));
         assert!(!should_release_headless_startup_hold(
@@ -1277,6 +1553,7 @@ mod tests {
             AppState::Idle,
             false,
             1,
+            false,
             false
         ));
         assert!(!should_release_headless_startup_hold(
@@ -1285,15 +1562,25 @@ mod tests {
             AppState::Idle,
             false,
             0,
+            true,
+            false
+        ));
+        assert!(!should_release_headless_startup_hold(
+            true,
+            true,
+            AppState::Idle,
+            false,
+            0,
+            false,
             true
         ));
     }
 
     #[test]
     fn history_remote_command_detection_matches_open_and_toggle_only() {
-        assert!(is_history_remote_command(RemoteCommand::OpenHistory));
-        assert!(is_history_remote_command(RemoteCommand::ToggleHistory));
-        assert!(!is_history_remote_command(RemoteCommand::OpenPreview));
-        assert!(!is_history_remote_command(RemoteCommand::CaptureRegion));
+        assert!(is_history_remote_command(&RemoteCommand::OpenHistory));
+        assert!(is_history_remote_command(&RemoteCommand::ToggleHistory));
+        assert!(!is_history_remote_command(&RemoteCommand::OpenPreview));
+        assert!(!is_history_remote_command(&RemoteCommand::CaptureRegion));
     }
 }

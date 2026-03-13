@@ -25,6 +25,15 @@ pub struct CaptureArtifact {
     pub created_at: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FocusedMonitorTarget {
+    pub name: String,
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
 #[derive(Debug, Error)]
 pub enum CaptureError {
     #[error("command failed: {command}")]
@@ -105,6 +114,73 @@ pub fn capture_region() -> Result<CaptureArtifact, CaptureError> {
 
 pub fn capture_window() -> Result<CaptureArtifact, CaptureError> {
     capture_window_with(&SystemCaptureBackend)
+}
+
+pub fn focused_monitor_target() -> Result<FocusedMonitorTarget, CaptureError> {
+    focused_monitor_target_with(&SystemCaptureBackend)
+}
+
+pub fn select_region_geometry() -> Result<String, CaptureError> {
+    select_region_geometry_with(&SystemCaptureBackend)
+}
+
+pub fn select_window_geometry() -> Result<String, CaptureError> {
+    select_window_geometry_with(&SystemCaptureBackend)
+}
+
+pub fn focused_monitor_target_with<B: CaptureBackend>(
+    backend: &B,
+) -> Result<FocusedMonitorTarget, CaptureError> {
+    let monitor_json = backend.focused_monitors_json()?;
+    let monitor = parse_focused_monitor(&monitor_json)?;
+    Ok(FocusedMonitorTarget {
+        name: monitor.name,
+        x: monitor.x,
+        y: monitor.y,
+        width: monitor.width.unwrap_or(1),
+        height: monitor.height.unwrap_or(1),
+    })
+}
+
+pub fn select_region_geometry_with<B: CaptureBackend>(backend: &B) -> Result<String, CaptureError> {
+    let raw_geometry = backend.run_region_selection()?;
+    let geometry = raw_geometry.trim();
+    if geometry.is_empty() {
+        return Err(CaptureError::InvalidSelection {
+            message: "region selection returned no geometry".to_string(),
+        });
+    }
+    let _ = parse_region_selection(geometry)?;
+    Ok(geometry.to_string())
+}
+
+pub fn select_window_geometry_with<B: CaptureBackend>(backend: &B) -> Result<String, CaptureError> {
+    let monitor_json = backend.focused_monitors_json()?;
+    let focused_monitor = parse_focused_monitor(&monitor_json)?;
+    let focused_workspace_id =
+        focused_monitor
+            .active_workspace_id
+            .ok_or(CaptureError::InvalidMonitorMetadata {
+                message: "focused monitor missing active workspace id".to_string(),
+            })?;
+
+    let clients_json = backend.clients_json()?;
+    let window_candidates = parse_selectable_windows(&clients_json, focused_workspace_id)?;
+    if window_candidates.is_empty() {
+        return Err(CaptureError::InvalidSelection {
+            message: "window selection has no selectable windows".to_string(),
+        });
+    }
+    let window_regions = format_window_selection_regions(&window_candidates);
+    let raw_geometry = backend.run_window_selection(&window_regions)?;
+    let geometry = raw_geometry.trim();
+    if geometry.is_empty() {
+        return Err(CaptureError::InvalidSelection {
+            message: "window selection returned no geometry".to_string(),
+        });
+    }
+    let _ = parse_region_selection(geometry)?;
+    Ok(geometry.to_string())
 }
 
 pub fn capture_full_with<B: CaptureBackend>(backend: &B) -> Result<CaptureArtifact, CaptureError> {

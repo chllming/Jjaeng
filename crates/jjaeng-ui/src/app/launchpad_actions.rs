@@ -1000,6 +1000,7 @@ mod tests {
         let storage_service = Rc::new(Some(StorageService::with_paths(
             PathBuf::from("/tmp"),
             PathBuf::from("/tmp"),
+            PathBuf::from("/tmp"),
         )));
         let status_log = Rc::new(RefCell::new(String::new()));
 
@@ -1025,6 +1026,7 @@ mod tests {
         let machine = Rc::new(RefCell::new(StateMachine::new()));
         let _ = machine.borrow_mut().transition(AppEvent::OpenPreview);
         let storage_service = Rc::new(Some(StorageService::with_paths(
+            PathBuf::from("/tmp"),
             PathBuf::from("/tmp"),
             PathBuf::from("/tmp"),
         )));
