@@ -8,15 +8,17 @@ This document now reflects the code that is actually in the repository as of 202
 
 ## Current status
 
-Jjaeng now has a working first-pass screen recording flow built into the app:
+Jjaeng now has a working screen recording flow built into the app:
 
-- `wl-screenrec` is the only implemented recording backend.
-- recordings can be started for fullscreen, region, and window targets
-- recordings can be stopped from the daemon-managed app state
-- completed recordings generate thumbnails and metadata
-- recordings appear in history together with screenshots
-- history supports `All`, `Images`, and `Videos` filtering
-- launchpad and CLI can start and stop recordings
+- Two recording backends are implemented: `gpu-screen-recorder` (preferred) and `wl-screenrec` (fallback).
+- Recordings can be started for fullscreen, region, and window targets.
+- Recordings can be stopped from the daemon-managed app state.
+- A compact recording bar (prompt mode) allows picking audio source, scale, and quality before recording starts.
+- Completed recordings generate thumbnails and metadata.
+- Recordings appear in history together with screenshots.
+- History supports `All`, `Images`, and `Videos` filtering.
+- Launchpad and CLI can start and stop recordings.
+- A recording result window shows on stop with Save, Copy Path, and Open actions.
 
 The implementation is deliberately MVP-shaped. It prioritizes a stable mixed-media workflow over fully exposing every idea from the original strategy.
 
@@ -37,7 +39,8 @@ It was not split into `session.rs` and `audio.rs` yet.
 The module currently owns:
 
 - `RecordBackend`
-- `SystemRecordBackend`
+- `SystemRecordBackend` (wl-screenrec)
+- `GpuScreenRecorderBackend` (gpu-screen-recorder)
 - `RecordingTarget`
 - `RecordingSize`
 - `RecordingEncodingPreset`
@@ -109,13 +112,22 @@ This keeps the public UI on working options while leaving room for the combined-
 
 ### Backend behavior
 
-`SystemRecordBackend` shells out to `wl-screenrec`:
+Two backends are implemented with automatic fallback. The preferred backend is determined by `preferred_record_backend_kind()`, which checks availability in order: `gpu-screen-recorder` first, then `wl-screenrec`.
+
+**`SystemRecordBackend`** shells out to `wl-screenrec`:
 
 - fullscreen recording uses `-o <monitor_name>`
 - region and window recording use `-g <geometry>`
 - size presets resolve into `--encode-resolution`
 - encoding presets resolve into codec/bitrate/fps settings
 - audio uses `--audio` and optional `--audio-device`
+
+**`GpuScreenRecorderBackend`** shells out to `gpu-screen-recorder`:
+
+- fullscreen recording uses `-w <monitor_name>`
+- region and window recording use `-w <geometry>`
+- quality presets map to `-q` levels (medium/high/very_high)
+- audio uses `-a <device>` with optional codec and bitrate
 
 Stopping a recording is implemented by sending `SIGINT` through:
 
@@ -125,10 +137,11 @@ kill -INT <pid>
 
 The stop flow then:
 
-1. waits for the recorder to exit
-2. extracts a thumbnail with `ffmpeg`
-3. probes width, height, and duration with `ffprobe`
-4. builds a `RecordArtifact`
+1. waits for the recorder to exit (with a 10-second timeout; escalates to SIGKILL if needed)
+2. validates the output file exists and is non-empty
+3. extracts a thumbnail with `ffmpeg`
+4. probes width, height, and duration with `ffprobe`
+5. builds a `RecordArtifact`
 
 ### Selection reuse
 
@@ -463,6 +476,10 @@ The type model still has `AudioMode::Both`, but the backend rejects it and the p
 
 ### Backend follow-up
 
+Implemented:
+
+- `gpu-screen-recorder` as preferred backend with `wl-screenrec` fallback
+
 Not implemented yet:
 
 - `wf-recorder` fallback backend
@@ -471,11 +488,15 @@ Not implemented yet:
 
 ### UX follow-up
 
+Implemented:
+
+- compact recording bar with icon controls for target, audio, scale, quality, and record/pause/stop
+- separate system-audio and microphone toggles with adjacent source dropdown chevrons
+- live elapsed timer during active recording
+- recording result window with Save, Copy Path, Open, and Close actions
+
 Not implemented yet:
 
-- a compact overlay recording control strip outside the launchpad
-- segmented desktop/mic toggles
-- mic source picker populated from live audio sources
 - richer video tile overlays
 
 ### Recovery and system integration

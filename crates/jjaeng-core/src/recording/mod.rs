@@ -574,16 +574,42 @@ pub fn stop_recording_with(handle: &mut RecordingHandle) -> Result<RecordArtifac
         });
     }
 
-    let status = handle.child.wait().map_err(RecordError::OutputMissing)?;
+    let status = crate::process_timeout::wait_with_timeout(
+        &mut handle.child,
+        std::time::Duration::from_secs(10),
+    )
+    .map_err(RecordError::OutputMissing)?;
+
+    let mut stderr_output = String::new();
+    if let Some(mut stderr) = handle.child.stderr.take() {
+        use std::io::Read;
+        let _ = stderr.read_to_string(&mut stderr_output);
+    }
+
     if !status.success() {
         tracing::warn!(
             recording_id = %handle.recording_id,
             status = ?status.code(),
+            stderr = %stderr_output.trim(),
             "recording process exited non-zero"
         );
     }
 
-    let metadata = fs::metadata(&handle.output_path).map_err(RecordError::OutputMissing)?;
+    let metadata = match fs::metadata(&handle.output_path) {
+        Ok(m) if m.len() > 0 => m,
+        Ok(_) => {
+            return Err(RecordError::CommandFailed {
+                command: "recording".to_string(),
+                message: "recording output file is empty".to_string(),
+            });
+        }
+        Err(err) => {
+            return Err(RecordError::CommandFailed {
+                command: "recording".to_string(),
+                message: format!("recording output file missing: {err}"),
+            });
+        }
+    };
     let probe = probe_video_metadata(&handle.output_path).unwrap_or(VideoMetadata {
         width: handle.geometry.width,
         height: handle.geometry.height,
@@ -642,7 +668,7 @@ fn base_record_command(output: &Path, options: &ResolvedRecordingOptions) -> Com
     }
     command.stdin(Stdio::null());
     command.stdout(Stdio::null());
-    command.stderr(Stdio::null());
+    command.stderr(Stdio::piped());
     command
 }
 
@@ -678,7 +704,7 @@ fn base_gpu_record_command(output: &Path, options: &ResolvedRecordingOptions) ->
         .arg("yes");
     command.stdin(Stdio::null());
     command.stdout(Stdio::null());
-    command.stderr(Stdio::null());
+    command.stderr(Stdio::piped());
     command
 }
 

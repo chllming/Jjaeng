@@ -1,7 +1,9 @@
-use std::io::Write;
+use std::io::{Read as _, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+const CAPTURE_COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
 
 use self::hyprland::{
     format_window_selection_regions, parse_focused_monitor, parse_selectable_windows,
@@ -506,32 +508,40 @@ fn run_command_output_internal(
         }
     }
 
-    let output = child
-        .wait_with_output()
+    // Drop stdin before waiting to avoid blocking the child on pipe write.
+    drop(child.stdin.take());
+
+    let status = crate::process_timeout::wait_with_timeout(&mut child, CAPTURE_COMMAND_TIMEOUT)
         .map_err(|err| CaptureError::CommandIo {
             command: command.to_string(),
             source: err,
         })?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    let mut stdout_content = String::new();
+    if let Some(mut stdout) = child.stdout.take() {
+        let _ = stdout.read_to_string(&mut stdout_content);
+    }
+    let mut stderr_content = String::new();
+    if let Some(mut stderr) = child.stderr.take() {
+        let _ = stderr.read_to_string(&mut stderr_content);
+    }
 
-    if !output.status.success() {
-        let message = format!("exit status: {}; stderr: {stderr}", output.status);
+    if !status.success() {
+        let message = format!("exit status: {status}; stderr: {stderr_content}");
         return Err(CaptureError::CommandFailed {
             command: command.to_string(),
             message,
         });
     }
 
-    if stdout.is_empty() {
+    if stdout_content.is_empty() {
         return Err(CaptureError::CommandFailed {
             command: command.to_string(),
             message: "command produced no stdout output".to_string(),
         });
     }
 
-    Ok(stdout)
+    Ok(stdout_content)
 }
 
 fn cleanup_command_child(child: &mut std::process::Child) {

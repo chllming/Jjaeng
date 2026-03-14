@@ -1,14 +1,12 @@
-use std::io;
+use std::io::{self, Read as _, Write};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::time::Duration;
 
-use gtk4::gdk;
-use gtk4::gdk::prelude::*;
-use gtk4::glib;
 use thiserror::Error;
 
-const MIME_TEXT_URI_LIST: &str = "text/uri-list";
-const MIME_GNOME_COPIED_FILES: &str = "x-special/gnome-copied-files";
-const MIME_TEXT_PLAIN: &str = "text/plain";
+const WL_COPY_TIMEOUT: Duration = Duration::from_secs(5);
+
 const MIME_TEXT_PLAIN_UTF8: &str = "text/plain;charset=utf-8";
 const MIME_IMAGE_PNG: &str = "image/png";
 
@@ -20,24 +18,11 @@ pub enum ClipboardError {
         #[source]
         source: io::Error,
     },
-    #[error("failed to convert path to file URI {path}: {source}")]
-    PathToUri {
-        path: PathBuf,
-        #[source]
-        source: glib::Error,
-    },
     #[error("failed to read image file {path}: {source}")]
     ReadFile {
         path: PathBuf,
         #[source]
         source: io::Error,
-    },
-    #[error("failed to access default display for clipboard operations")]
-    DisplayUnavailable,
-    #[error("failed to set clipboard content: {source}")]
-    SetContent {
-        #[source]
-        source: glib::BoolError,
     },
 }
 
@@ -49,31 +34,6 @@ pub trait ClipboardBackend {
 
 #[derive(Debug, Default)]
 pub struct WlCopyBackend;
-
-fn uri_list_payload(path: &Path) -> ClipboardResult<String> {
-    let absolute_path = resolve_absolute_path(path)?;
-    let uri =
-        glib::filename_to_uri(&absolute_path, None).map_err(|err| ClipboardError::PathToUri {
-            path: absolute_path.clone(),
-            source: err,
-        })?;
-    Ok(format!("{uri}\r\n"))
-}
-
-fn gnome_copied_files_payload(path: &Path) -> ClipboardResult<String> {
-    let absolute_path = resolve_absolute_path(path)?;
-    let uri =
-        glib::filename_to_uri(&absolute_path, None).map_err(|err| ClipboardError::PathToUri {
-            path: absolute_path.clone(),
-            source: err,
-        })?;
-    Ok(format!("copy\n{uri}"))
-}
-
-fn plain_text_path_payload(path: &Path) -> ClipboardResult<String> {
-    let absolute_path = resolve_absolute_path(path)?;
-    Ok(absolute_path.to_string_lossy().into_owned())
-}
 
 fn is_png_path(path: &Path) -> bool {
     path.extension()
@@ -93,57 +53,95 @@ fn resolve_absolute_path(path: &Path) -> ClipboardResult<PathBuf> {
         })
 }
 
+#[derive(Debug, Eq, PartialEq)]
+struct ClipboardPayload {
+    mime_type: &'static str,
+    bytes: Vec<u8>,
+}
+
+fn clipboard_payload(path: &Path) -> ClipboardResult<ClipboardPayload> {
+    let absolute_path = resolve_absolute_path(path)?;
+    if is_png_path(&absolute_path) {
+        let image_bytes =
+            std::fs::read(&absolute_path).map_err(|source| ClipboardError::ReadFile {
+                path: absolute_path,
+                source,
+            })?;
+        return Ok(ClipboardPayload {
+            mime_type: MIME_IMAGE_PNG,
+            bytes: image_bytes,
+        });
+    }
+
+    Ok(ClipboardPayload {
+        mime_type: MIME_TEXT_PLAIN_UTF8,
+        bytes: absolute_path.to_string_lossy().into_owned().into_bytes(),
+    })
+}
+
+fn copy_with_wl_copy(payload: &ClipboardPayload) -> ClipboardResult<()> {
+    let command = format!("wl-copy --type {}", payload.mime_type);
+    let mut child = Command::new("wl-copy")
+        .arg("--type")
+        .arg(payload.mime_type)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|source| ClipboardError::CommandIo {
+            command: command.clone(),
+            source,
+        })?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(&payload.bytes)
+            .map_err(|source| ClipboardError::CommandIo {
+                command: command.clone(),
+                source,
+            })?;
+    }
+
+    let status = crate::process_timeout::wait_with_timeout(&mut child, WL_COPY_TIMEOUT).map_err(
+        |source| ClipboardError::CommandIo {
+            command: command.clone(),
+            source,
+        },
+    )?;
+
+    if status.success() {
+        return Ok(());
+    }
+
+    let mut stderr_content = String::new();
+    if let Some(mut stderr) = child.stderr.take() {
+        let _ = stderr.read_to_string(&mut stderr_content);
+    }
+    let stderr_trimmed = stderr_content.trim();
+    let message = if stderr_trimmed.is_empty() {
+        format!("exit status {status}")
+    } else {
+        format!("exit status {status}: {stderr_trimmed}")
+    };
+    Err(ClipboardError::CommandIo {
+        command,
+        source: io::Error::other(message),
+    })
+}
+
+pub fn clipboard_available() -> bool {
+    Command::new("wl-copy")
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok()
+}
+
 impl ClipboardBackend for WlCopyBackend {
     fn copy(&self, path: &Path) -> ClipboardResult<()> {
-        let absolute_path = resolve_absolute_path(path)?;
-        let display = gdk::Display::default().ok_or(ClipboardError::DisplayUnavailable)?;
-        let clipboard = display.clipboard();
-
-        if is_png_path(&absolute_path) {
-            let image_bytes =
-                std::fs::read(&absolute_path).map_err(|source| ClipboardError::ReadFile {
-                    path: absolute_path,
-                    source,
-                })?;
-            let image_provider = gdk::ContentProvider::for_bytes(
-                MIME_IMAGE_PNG,
-                &glib::Bytes::from_owned(image_bytes),
-            );
-            return clipboard
-                .set_content(Some(&image_provider))
-                .map_err(|source| ClipboardError::SetContent { source });
-        }
-
-        let uri_list_payload = uri_list_payload(path)?;
-        let gnome_payload = gnome_copied_files_payload(path)?;
-        let text_path_payload = plain_text_path_payload(path)?;
-
-        let gnome_provider = gdk::ContentProvider::for_bytes(
-            MIME_GNOME_COPIED_FILES,
-            &glib::Bytes::from_owned(gnome_payload.into_bytes()),
-        );
-        let uri_provider = gdk::ContentProvider::for_bytes(
-            MIME_TEXT_URI_LIST,
-            &glib::Bytes::from_owned(uri_list_payload.clone().into_bytes()),
-        );
-        let text_provider = gdk::ContentProvider::for_bytes(
-            MIME_TEXT_PLAIN_UTF8,
-            &glib::Bytes::from_owned(text_path_payload.clone().into_bytes()),
-        );
-        let text_plain_provider = gdk::ContentProvider::for_bytes(
-            MIME_TEXT_PLAIN,
-            &glib::Bytes::from_owned(text_path_payload.into_bytes()),
-        );
-        let providers = vec![
-            gnome_provider,
-            uri_provider,
-            text_provider,
-            text_plain_provider,
-        ];
-        let provider = gdk::ContentProvider::new_union(&providers);
-        clipboard
-            .set_content(Some(&provider))
-            .map_err(|source| ClipboardError::SetContent { source })
+        let payload = clipboard_payload(path)?;
+        copy_with_wl_copy(&payload)
     }
 }
 
@@ -170,35 +168,29 @@ mod tests {
     }
 
     #[test]
-    fn uri_list_payload_encodes_spaces() {
+    fn clipboard_payload_reads_png_bytes_for_images() {
         let temp_dir = env::temp_dir();
-        let file_path = temp_dir.join("jjaeng uri payload test.png");
-        std::fs::write(&file_path, b"binary").unwrap();
-        let payload = uri_list_payload(&file_path).expect("uri payload");
-        assert!(payload.starts_with("file://"));
-        assert!(payload.contains("%20"));
-        assert!(payload.ends_with("\r\n"));
+        let file_path = temp_dir.join("jjaeng clipboard payload image test.png");
+        std::fs::write(&file_path, b"image-binary").unwrap();
+        let payload = clipboard_payload(&file_path).expect("payload");
+        assert_eq!(
+            payload,
+            ClipboardPayload {
+                mime_type: MIME_IMAGE_PNG,
+                bytes: b"image-binary".to_vec(),
+            }
+        );
         let _ = std::fs::remove_file(file_path);
     }
 
     #[test]
-    fn gnome_copied_files_payload_has_copy_prefix_and_uri() {
+    fn clipboard_payload_uses_absolute_text_path_for_non_images() {
         let temp_dir = env::temp_dir();
-        let file_path = temp_dir.join("jjaeng copied files payload test.png");
+        let file_path = temp_dir.join("jjaeng clipboard payload text test.mp4");
         std::fs::write(&file_path, b"binary").unwrap();
-        let payload = gnome_copied_files_payload(&file_path).expect("payload");
-        assert!(payload.starts_with("copy\nfile://"));
-        assert!(payload.contains("%20"));
-        let _ = std::fs::remove_file(file_path);
-    }
-
-    #[test]
-    fn plain_text_path_payload_returns_absolute_path() {
-        let temp_dir = env::temp_dir();
-        let file_path = temp_dir.join("jjaeng plain text payload test.png");
-        std::fs::write(&file_path, b"binary").unwrap();
-        let payload = plain_text_path_payload(&file_path).expect("payload");
-        assert_eq!(payload, file_path.to_string_lossy());
+        let payload = clipboard_payload(&file_path).expect("payload");
+        assert_eq!(payload.mime_type, MIME_TEXT_PLAIN_UTF8);
+        assert_eq!(payload.bytes, file_path.to_string_lossy().as_bytes());
         let _ = std::fs::remove_file(file_path);
     }
 

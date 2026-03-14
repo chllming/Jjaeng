@@ -1044,6 +1044,8 @@ impl App {
                 let recording_prompt = recording_prompt.clone();
                 let recording_result = recording_result.clone();
                 let recording_flow_pending = recording_flow_pending.clone();
+                let last_snapshot_json = Rc::new(RefCell::new(String::new()));
+                let last_snapshot_time = Rc::new(Cell::new(Instant::now()));
 
                 Rc::new(move || {
                     let runtime = runtime_session.borrow();
@@ -1129,9 +1131,18 @@ impl App {
                             .then_some(recording_runtime.elapsed_ms.get()),
                         recording_id: recording_runtime.active_recording_id(),
                     };
-                    if let Err(err) = jjaeng_core::service::write_status_snapshot(&status_snapshot)
-                    {
-                        tracing::debug!(?err, "failed to write status snapshot");
+                    if let Ok(snapshot_json) = serde_json::to_string(&status_snapshot) {
+                        let changed = *last_snapshot_json.borrow() != snapshot_json;
+                        let elapsed = last_snapshot_time.get().elapsed() >= Duration::from_millis(500);
+                        if changed || elapsed {
+                            if let Err(err) =
+                                jjaeng_core::service::write_status_snapshot(&status_snapshot)
+                            {
+                                tracing::debug!(?err, "failed to write status snapshot");
+                            }
+                            *last_snapshot_json.borrow_mut() = snapshot_json;
+                            last_snapshot_time.set(Instant::now());
+                        }
                     }
                     if !daemon_mode
                         && should_release_headless_startup_hold(
@@ -1995,7 +2006,8 @@ impl App {
             );
 
             if daemon_mode {
-                jjaeng_core::service::spawn_command_server(remote_command_tx.clone());
+                let _command_server_guard =
+                    jjaeng_core::service::spawn_command_server(remote_command_tx.clone());
                 let remote_command_rx = remote_command_rx.clone();
                 let launchpad_actions = launchpad_actions.clone();
                 let open_history_window = open_history_window.clone();

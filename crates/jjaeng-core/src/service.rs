@@ -4,6 +4,9 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 use std::thread;
+use std::time::Duration;
+
+const SOCKET_TIMEOUT: Duration = Duration::from_secs(3);
 
 use serde::{Deserialize, Serialize};
 
@@ -56,6 +59,8 @@ pub fn status_snapshot_path() -> PathBuf {
 
 pub fn try_send_command(command: &RemoteCommand) -> io::Result<RemoteResponse> {
     let mut stream = UnixStream::connect(command_socket_path())?;
+    stream.set_read_timeout(Some(SOCKET_TIMEOUT))?;
+    stream.set_write_timeout(Some(SOCKET_TIMEOUT))?;
     serde_json::to_writer(&mut stream, command)?;
     stream.write_all(b"\n")?;
     stream.flush()?;
@@ -73,7 +78,23 @@ pub fn try_send_command(command: &RemoteCommand) -> io::Result<RemoteResponse> {
     serde_json::from_str(line.trim()).map_err(io::Error::other)
 }
 
-pub fn spawn_command_server(sender: Sender<RemoteCommand>) {
+pub struct CommandServerGuard {
+    socket_path: PathBuf,
+}
+
+impl Drop for CommandServerGuard {
+    fn drop(&mut self) {
+        if let Err(err) = fs::remove_file(&self.socket_path) {
+            tracing::debug!(
+                path = %self.socket_path.display(),
+                ?err,
+                "failed to clean up command socket on exit"
+            );
+        }
+    }
+}
+
+pub fn spawn_command_server(sender: Sender<RemoteCommand>) -> Option<CommandServerGuard> {
     let socket_path = command_socket_path();
     if let Some(parent) = socket_path.parent() {
         let _ = fs::create_dir_all(parent);
@@ -84,7 +105,11 @@ pub fn spawn_command_server(sender: Sender<RemoteCommand>) {
 
     let Ok(listener) = UnixListener::bind(&socket_path) else {
         tracing::warn!(path = %socket_path.display(), "failed to bind command socket");
-        return;
+        return None;
+    };
+
+    let guard = CommandServerGuard {
+        socket_path: socket_path.clone(),
     };
 
     thread::spawn(move || {
@@ -127,6 +152,8 @@ pub fn spawn_command_server(sender: Sender<RemoteCommand>) {
             let _ = stream.flush();
         }
     });
+
+    Some(guard)
 }
 
 pub fn write_status_snapshot(snapshot: &StatusSnapshot) -> io::Result<()> {

@@ -514,17 +514,14 @@ Jjaeng creates these directories automatically when needed.
 
 ## 12. Clipboard Behavior
 
-When you copy from Jjaeng (Preview `c` or Editor `Ctrl+C`), the clipboard receives multiple formats so different apps can pick the best one:
+Jjaeng copies to the clipboard via `wl-copy`. The MIME type depends on the file being copied:
 
-| Format | Content | Used by |
-|--------|---------|---------|
-| `image/png` | Raw PNG image bytes | Image editors, browsers, chat apps, coding agents |
-| `text/uri-list` | File URI (`file:///path/to/image.png`) | File managers |
-| `x-special/gnome-copied-files` | GNOME file copy format | Nautilus, GNOME apps |
-| `text/plain;charset=utf-8` | Absolute file path (UTF-8) | Modern text editors, terminals |
-| `text/plain` | Absolute file path | Legacy terminals, text editors |
+| File type | MIME type | Content | Used by |
+|-----------|-----------|---------|---------|
+| PNG image | `image/png` | Raw PNG image bytes | Image editors, browsers, chat apps, coding agents |
+| Other files | `text/plain;charset=utf-8` | Absolute file path (UTF-8) | Text editors, terminals, file managers |
 
-This means you can paste into image-aware apps (they receive the PNG data) or file managers (they receive the file reference).
+For screenshot captures (which are always PNG), image-aware apps receive the raw image data directly — no intermediate file path is needed. This means you can paste screenshots into browsers, chat apps, and coding agents immediately.
 
 ---
 

@@ -356,12 +356,6 @@ fn build_preview_window(
 
     let preview_overlay = Overlay::new();
     preview_overlay.add_css_class("transparent-bg");
-    if !artifact.temp_path.exists() {
-        *context.status_log.borrow_mut() = format!(
-            "preview image path missing: {}",
-            artifact.temp_path.display()
-        );
-    }
 
     let preview_controls = build_preview_controls(context);
 
@@ -523,6 +517,18 @@ fn create_preview_window_for_capture(
     context: &PreviewRenderContext,
     artifact: &capture::CaptureArtifact,
 ) {
+    if !artifact.temp_path.exists() {
+        *context.status_log.borrow_mut() = format!(
+            "preview skipped: image file missing at {}",
+            artifact.temp_path.display()
+        );
+        tracing::warn!(
+            capture_id = %artifact.capture_id,
+            path = %artifact.temp_path.display(),
+            "skipping preview window creation for missing temp file"
+        );
+        return;
+    }
     let build = build_preview_window(context, artifact);
     let close_guard = connect_preview_window_action_wiring(context, &build, &artifact.capture_id);
     connect_preview_window_interactions(&build);

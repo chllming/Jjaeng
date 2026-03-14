@@ -814,8 +814,8 @@ fn set_preview_cursor(
     }
 }
 
-fn requires_main_thread_preview_action(action: PreviewAction) -> bool {
-    matches!(action, PreviewAction::Copy)
+fn requires_main_thread_preview_action(_action: PreviewAction) -> bool {
+    false
 }
 
 fn close_preview_when_session_empty(
@@ -1050,8 +1050,8 @@ mod tests {
     }
 
     #[test]
-    fn copy_requires_main_thread_execution() {
-        assert!(requires_main_thread_preview_action(PreviewAction::Copy));
+    fn no_preview_action_requires_main_thread() {
+        assert!(!requires_main_thread_preview_action(PreviewAction::Copy));
         assert!(!requires_main_thread_preview_action(PreviewAction::Save));
         assert!(!requires_main_thread_preview_action(PreviewAction::Delete));
     }

@@ -14,7 +14,7 @@
 - `cargo fmt --check` : enforces formatting used in CI/PR checks.
 - `cargo run -p jjaeng-cli -- --help` : exercises the CLI package.
 - `cargo run -p jjaeng-daemon --` : launches the daemon entrypoint locally.
-- `cargo clippy --all-targets --all-features -D warnings` : optional but recommended lint gate.
+- `cargo clippy --all-targets --all-features -- -D warnings` : optional but recommended lint gate.
 
 ## Coding Style & Naming Conventions
 - Follow Rust 2021 defaults and `rustfmt` output (4-space indentation, standard wrapping).
