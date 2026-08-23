@@ -1,0 +1,13 @@
+[Unit]
+Description=Jjaeng capture daemon
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/jjaengd
+Restart=on-failure
+RestartSec=2
+Environment=GDK_BACKEND=wayland
+
+[Install]
+WantedBy=graphical-session.target
