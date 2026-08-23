@@ -1,5 +1,6 @@
 use std::fs;
 use std::io::{self, BufRead, BufReader, Write};
+use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
@@ -97,16 +98,35 @@ impl Drop for CommandServerGuard {
 pub fn spawn_command_server(sender: Sender<RemoteCommand>) -> Option<CommandServerGuard> {
     let socket_path = command_socket_path();
     if let Some(parent) = socket_path.parent() {
-        let _ = fs::create_dir_all(parent);
+        if let Err(err) = fs::create_dir_all(parent) {
+            tracing::warn!(path = %parent.display(), ?err, "failed to create runtime directory");
+            return None;
+        }
+        if let Err(err) = fs::set_permissions(parent, fs::Permissions::from_mode(0o700)) {
+            tracing::warn!(path = %parent.display(), ?err, "failed to harden runtime directory");
+            return None;
+        }
     }
-    if socket_path.exists() {
-        let _ = fs::remove_file(&socket_path);
+    if let Ok(metadata) = fs::symlink_metadata(&socket_path) {
+        if metadata.file_type().is_symlink() || !metadata.file_type().is_socket() {
+            tracing::warn!(path = %socket_path.display(), "refusing to replace non-socket runtime path");
+            return None;
+        }
+        if let Err(err) = fs::remove_file(&socket_path) {
+            tracing::warn!(path = %socket_path.display(), ?err, "failed to remove stale command socket");
+            return None;
+        }
     }
 
     let Ok(listener) = UnixListener::bind(&socket_path) else {
         tracing::warn!(path = %socket_path.display(), "failed to bind command socket");
         return None;
     };
+    if let Err(err) = fs::set_permissions(&socket_path, fs::Permissions::from_mode(0o600)) {
+        tracing::warn!(path = %socket_path.display(), ?err, "failed to harden command socket");
+        let _ = fs::remove_file(&socket_path);
+        return None;
+    }
 
     let guard = CommandServerGuard {
         socket_path: socket_path.clone(),
@@ -160,12 +180,14 @@ pub fn write_status_snapshot(snapshot: &StatusSnapshot) -> io::Result<()> {
     let path = status_snapshot_path();
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700))?;
     }
 
     let tmp_path = path.with_extension("json.tmp");
     let encoded = serde_json::to_vec(snapshot).map_err(io::Error::other)?;
     fs::write(&tmp_path, encoded)?;
     fs::rename(tmp_path, path)?;
+    fs::set_permissions(status_snapshot_path(), fs::Permissions::from_mode(0o600))?;
     Ok(())
 }
 

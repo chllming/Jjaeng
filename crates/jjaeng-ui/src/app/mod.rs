@@ -2006,8 +2006,14 @@ impl App {
             );
 
             if daemon_mode {
-                let _command_server_guard =
-                    jjaeng_core::service::spawn_command_server(remote_command_tx.clone());
+                if let Some(command_server_guard) =
+                    jjaeng_core::service::spawn_command_server(remote_command_tx.clone())
+                {
+                    // Keep the Unix listener alive for the lifetime of the GTK application.
+                    // Dropping the guard immediately leaves an orphaned listener without a
+                    // filesystem socket, which prevents MCP/UI clients from reaching the daemon.
+                    unsafe { app.set_data("jjaeng-command-server-guard", command_server_guard) };
+                }
                 let remote_command_rx = remote_command_rx.clone();
                 let launchpad_actions = launchpad_actions.clone();
                 let open_history_window = open_history_window.clone();

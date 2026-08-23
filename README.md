@@ -26,6 +26,7 @@ The name "Jjaeng" is a nod to something vivid, sharp, and bright, while the proj
 - `crates/jjaeng-ui`: GTK runtime for preview, history, launchpad, and editor
 - `crates/jjaeng-daemon`: hidden daemon binary (`jjaengd`)
 - `crates/jjaeng-cli`: user-facing CLI binary (`jjaeng`)
+- `crates/jjaeng-mcp`: local stdio MCP server (`jjaeng-mcp`) for screen inspection, screenshots, recording, history, and UI actions
 
 ## Runtime Requirements
 
@@ -37,6 +38,7 @@ The name "Jjaeng" is a nod to something vivid, sharp, and bright, while the proj
 - `gpu-screen-recorder` or `wl-screenrec` for video recording
 - `pactl` for recording audio source discovery
 - GTK4 runtime libraries
+- `ffmpeg` for recording thumbnails
 
 ## Install
 
@@ -66,6 +68,7 @@ cd Jjaeng
 cargo build --release --workspace
 install -Dm755 target/release/jjaeng ~/.local/bin/jjaeng
 install -Dm755 target/release/jjaengd ~/.local/bin/jjaengd
+install -Dm755 target/release/jjaeng-mcp ~/.local/bin/jjaeng-mcp
 ```
 
 ## Usage
@@ -109,6 +112,49 @@ jjaeng --copy-latest
 jjaeng --save-latest
 jjaeng --status-json
 ```
+
+## MCP integration
+
+`jjaeng-mcp` is a local stdio Model Context Protocol server. It does not open a
+network listener. Observation tools enumerate Hyprland monitors, workspaces,
+windows, audio sources, and history; screenshot tools support focused monitors,
+visible workspaces, regions, and selected windows; recording tools support
+monitor, region, window, and workspace targets with pause/resume and bounded
+duration. Recording and UI-mutating tools should remain approval-gated in the
+MCP client, especially when microphone audio is requested.
+
+Register it with Codex:
+
+```bash
+codex mcp add jjaeng -- ~/.local/bin/jjaeng-mcp
+codex mcp list
+```
+
+The absolute path form is recommended for packaged installs:
+
+```bash
+codex mcp add jjaeng -- /usr/bin/jjaeng-mcp
+```
+
+The same executable can be registered in OpenClaw's `mcp.servers` registry. If
+that agent uses an explicit tool allowlist, include `jjaeng__*` only for agents
+trusted to see local screen contents, and keep recording tools in
+prompt/approval mode.
+
+MCP Inspector can validate the stdio handshake and tool schemas:
+
+```bash
+npx @modelcontextprotocol/inspector /usr/bin/jjaeng-mcp
+```
+
+Logs are written to stderr so stdout remains reserved for MCP JSON-RPC.
+
+## Jjaeng skills
+
+Reusable agent workflows live under [`skills/`](skills/): screen observation,
+capture evidence, bounded recording, window/workspace resolution, visual QA,
+privacy safeguards, and web research. The research workflow uses the host's
+web-search tools and never uploads local screenshots or recordings implicitly.
 
 ## Desktop Integration
 

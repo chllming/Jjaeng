@@ -50,3 +50,6 @@ jobs:
 
       - name: Cargo clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: MCP crate clippy
+        run: cargo clippy -p jjaeng-mcp --all-targets --all-features -- -D warnings
