@@ -1,0 +1,26 @@
+# Maintainer: Agent Screen contributors
+pkgname=agent-screen-bin
+pkgver=0.6.0
+pkgrel=3
+pkgdesc="Hyprland screenshot, recording, and MCP utility (prebuilt binary)"
+arch=('x86_64')
+url="https://github.com/chllming/Jjaeng"
+license=('MIT' 'Apache-2.0')
+depends=('gtk4' 'hyprland' 'grim' 'slurp' 'wl-clipboard')
+optdepends=('gpu-screen-recorder: GPU-accelerated Wayland recording and combined audio'
+            'ffmpeg: recording thumbnail extraction'
+            'agent-screen-ocr-models: OCR text recognition support')
+provides=('agent-screen' 'jjaeng')
+conflicts=('jjaeng-bin')
+source=("$pkgname-$pkgver-x86_64.tar.gz::$url/releases/download/v$pkgver/agent-screen-x86_64-unknown-linux-gnu.tar.gz")
+sha256sums=('SKIP')
+
+package() {
+  install -Dm755 "agent-screen" "$pkgdir/usr/bin/agent-screen"
+  install -Dm755 "jjaeng" "$pkgdir/usr/bin/jjaeng"
+  install -Dm755 "agent-screend" "$pkgdir/usr/bin/agent-screend"
+  install -Dm755 "jjaengd" "$pkgdir/usr/bin/jjaengd"
+  install -Dm755 "agent-screen-mcp" "$pkgdir/usr/bin/agent-screen-mcp"
+  install -Dm755 "jjaeng-mcp" "$pkgdir/usr/bin/jjaeng-mcp"
+  install -Dm644 "agent-screend.service" "$pkgdir/usr/lib/systemd/user/agent-screend.service"
+}

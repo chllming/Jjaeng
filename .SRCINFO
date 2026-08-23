@@ -1,5 +1,5 @@
-pkgbase = jjaeng
-	pkgdesc = Hyprland screenshot, recording, and MCP utility
+pkgbase = agent-screen
+	pkgdesc = Hyprland screenshot, recording, and MCP utility for agents
 	pkgver = 0.6.0
 	pkgrel = 3
 	url = https://github.com/chllming/Jjaeng
@@ -21,9 +21,9 @@ pkgbase = jjaeng
 	depends = wl-clipboard
 	optdepends = gpu-screen-recorder: GPU-accelerated Wayland recording and combined audio
 	optdepends = ffmpeg: recording thumbnail extraction
-	optdepends = jjaeng-ocr-models: OCR text recognition support
+	optdepends = agent-screen-ocr-models: OCR text recognition support
 	options = !lto
-	source = jjaeng-0.6.0.tar.gz::https://github.com/chllming/Jjaeng/archive/refs/tags/v0.6.0.tar.gz
+	source = agent-screen-0.6.0.tar.gz::https://github.com/chllming/Jjaeng/archive/refs/tags/v0.6.0.tar.gz
 	sha256sums = SKIP
 
-pkgname = jjaeng
+pkgname = agent-screen

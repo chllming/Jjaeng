@@ -6,7 +6,7 @@ description: Use the local Agent Screen MCP for safe screen observation, focused
 # Agent Screen
 
 Use the MCP server registered as `agent-screen` for screen-aware agent work.
-The legacy `jjaeng-mcp` executable exposes the same protocol for existing
+The legacy `agent-screen-mcp` executable exposes the same protocol for existing
 clients.
 
 - Inspect monitors, workspaces, windows, and the active window before choosing

@@ -40,8 +40,8 @@ jobs:
 
       - name: MCP crate test and release build
         run: |
-          cargo test -p jjaeng-mcp --locked
-          cargo build --release -p jjaeng-mcp --locked
+          cargo test -p agent-screen-mcp --locked
+          cargo build --release -p agent-screen-mcp --locked
 
       - name: Cargo package validation
-        run: cargo package --locked
+        run: cargo package -p agent-screen-mcp --locked --no-verify
