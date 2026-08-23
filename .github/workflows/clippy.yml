@@ -52,4 +52,4 @@ jobs:
         run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: MCP crate clippy
-        run: cargo clippy -p jjaeng-mcp --all-targets --all-features -- -D warnings
+        run: cargo clippy -p agent-screen-mcp --all-targets --all-features -- -D warnings

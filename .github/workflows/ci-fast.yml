@@ -54,10 +54,10 @@ jobs:
         run: cargo test --locked
 
       - name: MCP crate test
-        run: cargo test -p jjaeng-mcp --locked
+        run: cargo test -p agent-screen-mcp --locked
 
       - name: MCP crate release build
-        run: cargo build --release -p jjaeng-mcp --locked
+        run: cargo build --release -p agent-screen-mcp --locked
 
       - name: Cargo fmt check
         run: cargo fmt --check
