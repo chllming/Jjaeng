@@ -106,7 +106,9 @@ pub(in crate::app) fn pixbuf_region_to_rgba_image(
             continue;
         }
 
-        for (src_pixel, dst_pixel) in src_row.chunks_exact(3).zip(dst_row.chunks_exact_mut(4)) {
+        let (src_pixels, _) = src_row.as_chunks::<3>();
+        let (dst_pixels, _) = dst_row.as_chunks_mut::<4>();
+        for (src_pixel, dst_pixel) in src_pixels.iter().zip(dst_pixels.iter_mut()) {
             dst_pixel[0] = src_pixel[0];
             dst_pixel[1] = src_pixel[1];
             dst_pixel[2] = src_pixel[2];
@@ -154,7 +156,9 @@ pub(in crate::app) fn rgba_image_to_cairo_surface(
             let src_row = &src[src_row_offset..src_row_end];
             let dst_row = &mut data[dst_row_offset..dst_row_end];
 
-            for (src_pixel, dst_pixel) in src_row.chunks_exact(4).zip(dst_row.chunks_exact_mut(4)) {
+            let (src_pixels, _) = src_row.as_chunks::<4>();
+            let (dst_pixels, _) = dst_row.as_chunks_mut::<4>();
+            for (src_pixel, dst_pixel) in src_pixels.iter().zip(dst_pixels.iter_mut()) {
                 let r = src_pixel[0];
                 let g = src_pixel[1];
                 let b = src_pixel[2];
