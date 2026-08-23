@@ -280,8 +280,13 @@ fn bottom_left_preview_geometry(
     margin: i32,
 ) -> preview::PreviewWindowGeometry {
     let margin = margin.max(0);
-    let width = geometry.width.max(1).min(bounds.width.max(1));
-    let height = geometry.height.max(1).min(bounds.height.max(1));
+    let available_width = bounds.width.saturating_sub(margin.saturating_mul(2)).max(1);
+    let available_height = bounds
+        .height
+        .saturating_sub(margin.saturating_mul(2))
+        .max(1);
+    let width = geometry.width.max(1).min(available_width);
+    let height = geometry.height.max(1).min(available_height);
 
     preview::PreviewWindowGeometry {
         x: bounds.x.saturating_add(margin),
@@ -387,9 +392,9 @@ mod tests {
             placement.geometry,
             preview::PreviewWindowGeometry {
                 x: 24,
-                y: 820,
-                width: 420,
-                height: 236,
+                y: 772,
+                width: 504,
+                height: 284,
             }
         );
     }

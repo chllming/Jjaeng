@@ -1,8 +1,8 @@
-//! Jjaeng's local stdio MCP server.
-//!
-//! The MCP process intentionally has no GTK or OCR dependency.  It talks to
-//! Hyprland and Wayland capture utilities directly for typed observation and
-//! capture tools, and uses the existing daemon socket for UI actions.
+// Jjaeng's local stdio MCP server, also available as `agent-screen`.
+//
+// The MCP process intentionally has no GTK or OCR dependency. It talks to
+// Hyprland and Wayland capture utilities directly for typed observation and
+// capture tools, and uses the existing daemon socket for UI actions.
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use rmcp::{
@@ -24,7 +24,7 @@ use std::{
     fs,
     io::{Read, Write},
     os::unix::net::UnixStream,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{Arc, Mutex},
     thread,
@@ -258,6 +258,7 @@ struct Runtime {
 pub struct JjaengServer {
     tool_router: ToolRouter<Self>,
     runtime: Arc<Mutex<Runtime>>,
+    server_name: &'static str,
 }
 
 impl Default for JjaengServer {
@@ -268,9 +269,22 @@ impl Default for JjaengServer {
 
 impl JjaengServer {
     pub fn new() -> Self {
+        Self::with_server_name("jjaeng")
+    }
+
+    pub fn with_server_name(server_name: &'static str) -> Self {
         Self {
             tool_router: Self::tool_router(),
             runtime: Arc::new(Mutex::new(Runtime::default())),
+            server_name,
+        }
+    }
+
+    fn resource_scheme(&self) -> &'static str {
+        if self.server_name == "agent-screen" {
+            "agent-screen"
+        } else {
+            "jjaeng"
         }
     }
 }
@@ -647,6 +661,11 @@ impl JjaengServer {
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for JjaengServer {
     fn get_info(&self) -> ServerInfo {
+        let product_name = if self.server_name == "agent-screen" {
+            "Agent Screen"
+        } else {
+            "Jjaeng"
+        };
         ServerInfo::new(
             ServerCapabilities::builder()
                 .enable_tools()
@@ -654,8 +673,8 @@ impl ServerHandler for JjaengServer {
                 .enable_prompts()
                 .build(),
         )
-            .with_server_info(Implementation::new("jjaeng", env!("CARGO_PKG_VERSION")))
-            .with_instructions("Jjaeng is a local Hyprland screen capture and recording server. Read-only observation is safe by default; recording and UI actions require client approval.")
+            .with_server_info(Implementation::new(self.server_name, env!("CARGO_PKG_VERSION")))
+            .with_instructions(format!("{product_name} is a local Hyprland screen capture and recording server. Read-only observation is safe by default; recording and UI actions require client approval."))
     }
 
     async fn list_resources(
@@ -663,7 +682,9 @@ impl ServerHandler for JjaengServer {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, ErrorData> {
-        Ok(ListResourcesResult::with_all_items(resource_definitions()))
+        Ok(ListResourcesResult::with_all_items(resource_definitions(
+            self.resource_scheme(),
+        )))
     }
 
     async fn read_resource(
@@ -671,7 +692,7 @@ impl ServerHandler for JjaengServer {
         request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResponse, ErrorData> {
-        read_resource_contents(&request.uri)
+        read_resource_contents(&request.uri, self.resource_scheme())
             .map(|contents| ReadResourceResult::new(contents).into())
             .map_err(|message| ErrorData::invalid_params(message, None))
     }
@@ -701,23 +722,26 @@ impl ServerHandler for JjaengServer {
     }
 }
 
-fn resource_definitions() -> Vec<Resource> {
-    [
-        ("jjaeng://status", "status", "application/json"),
-        ("jjaeng://capabilities", "capabilities", "application/json"),
-        ("jjaeng://monitors", "monitors", "application/json"),
-        ("jjaeng://workspaces", "workspaces", "application/json"),
-        ("jjaeng://windows", "windows", "application/json"),
-        ("jjaeng://history", "history", "application/json"),
+fn resource_definitions(scheme: &str) -> Vec<Resource> {
+    let mut resources = [
+        ("status", "status", "application/json"),
+        ("capabilities", "capabilities", "application/json"),
+        ("monitors", "monitors", "application/json"),
+        ("workspaces", "workspaces", "application/json"),
+        ("windows", "windows", "application/json"),
+        ("history", "history", "application/json"),
     ]
     .into_iter()
-    .map(|(uri, name, mime)| Resource::new(uri, name).with_mime_type(mime))
-    .chain(std::iter::once(
-        Resource::new("jjaeng://artifact/{artifact_id}", "artifact")
-            .with_description("A Jjaeng screenshot or recording artifact")
+    .map(|(path, name, mime)| {
+        Resource::new(format!("{scheme}://{path}"), name).with_mime_type(mime)
+    })
+    .collect::<Vec<_>>();
+    resources.push(
+        Resource::new(format!("{scheme}://artifact/{{artifact_id}}"), "artifact")
+            .with_description("A Jjaeng or Agent Screen screenshot or recording artifact")
             .with_mime_type("application/octet-stream"),
-    ))
-    .collect()
+    );
+    resources
 }
 
 fn prompt_definitions() -> Vec<Prompt> {
@@ -739,31 +763,38 @@ fn prompt_definitions() -> Vec<Prompt> {
     .collect()
 }
 
-fn read_resource_contents(uri: &str) -> Result<Vec<ResourceContents>, String> {
-    let (uri, artifact_id) = uri
-        .strip_prefix("jjaeng://artifact/")
-        .map_or((uri, None), |id| {
-            ("jjaeng://artifact/{artifact_id}", Some(id))
+fn read_resource_contents(uri: &str, scheme: &str) -> Result<Vec<ResourceContents>, String> {
+    let (uri_scheme, resource_path) = uri
+        .split_once("://")
+        .ok_or_else(|| format!("invalid resource URI: {uri}"))?;
+    if uri_scheme != "jjaeng" && uri_scheme != "agent-screen" {
+        return Err(format!("unknown resource scheme: {uri_scheme}"));
+    }
+    let (resource_path, artifact_id) = resource_path
+        .strip_prefix("artifact/")
+        .map_or((resource_path, None), |id| {
+            ("artifact/{artifact_id}", Some(id))
         });
-    let (text, mime) = match uri {
-        "jjaeng://status" => (read_daemon_status()?.to_string(), "application/json"),
-        "jjaeng://capabilities" => (
+    let canonical_uri = format!("{scheme}://{resource_path}");
+    let (text, mime) = match resource_path {
+        "status" => (read_daemon_status()?.to_string(), "application/json"),
+        "capabilities" => (
             serde_json::to_string(&current_capabilities()).map_err(|err| err.to_string())?,
             "application/json",
         ),
-        "jjaeng://monitors" => (
+        "monitors" => (
             serde_json::to_string(&hyprland_monitors()?).map_err(|err| err.to_string())?,
             "application/json",
         ),
-        "jjaeng://workspaces" => (
+        "workspaces" => (
             serde_json::to_string(&hyprland_workspaces()?).map_err(|err| err.to_string())?,
             "application/json",
         ),
-        "jjaeng://windows" => (
+        "windows" => (
             serde_json::to_string(&hyprland_windows()?).map_err(|err| err.to_string())?,
             "application/json",
         ),
-        "jjaeng://history" => (
+        "history" => (
             serde_json::to_string(
                 &load_history()?
                     .entries
@@ -774,7 +805,7 @@ fn read_resource_contents(uri: &str) -> Result<Vec<ResourceContents>, String> {
             .map_err(|err| err.to_string())?,
             "application/json",
         ),
-        "jjaeng://artifact/{artifact_id}" => {
+        "artifact/{artifact_id}" => {
             let id = artifact_id.ok_or_else(|| "artifact URI is missing an ID".to_string())?;
             let entry = find_history_entry(id)?;
             let path = entry.media_path.clone();
@@ -782,31 +813,60 @@ fn read_resource_contents(uri: &str) -> Result<Vec<ResourceContents>, String> {
             if bytes.len() > MAX_INLINE_IMAGE_BYTES {
                 return Ok(vec![ResourceContents::text(
                     serde_json::to_string(&history_info(entry)).map_err(|err| err.to_string())?,
-                    format!("jjaeng://artifact/{id}"),
+                    format!("{scheme}://artifact/{id}"),
                 )]);
             }
             let mime = history_info(entry).mime_type;
             return Ok(vec![ResourceContents::blob(
                 BASE64.encode(bytes),
-                format!("jjaeng://artifact/{id}"),
+                format!("{scheme}://artifact/{id}"),
             )
             .with_mime_type(mime)]);
         }
-        _ => return Err(format!("unknown Jjaeng resource: {uri}")),
+        _ => return Err(format!("unknown screen resource: {uri}")),
     };
-    Ok(vec![ResourceContents::text(text, uri).with_mime_type(mime)])
+    Ok(vec![
+        ResourceContents::text(text, canonical_uri).with_mime_type(mime)
+    ])
+}
+
+fn binary_name() -> &'static str {
+    let is_agent_screen = std::env::args_os()
+        .next()
+        .map(|path| {
+            Path::new(&path).file_stem().and_then(|name| name.to_str()) == Some("agent-screen")
+        })
+        .unwrap_or(false);
+    if is_agent_screen {
+        "agent-screen"
+    } else {
+        "jjaeng-mcp"
+    }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let binary_name = binary_name();
+    let server_name = if binary_name == "agent-screen" {
+        "agent-screen"
+    } else {
+        "jjaeng"
+    };
     if let Some(argument) = std::env::args().nth(1) {
         match argument.as_str() {
             "--version" | "-V" => {
-                println!("jjaeng-mcp {}", env!("CARGO_PKG_VERSION"));
+                println!("{binary_name} {}", env!("CARGO_PKG_VERSION"));
                 return Ok(());
             }
             "--help" | "-h" => {
-                println!("Jjaeng MCP server\n\nUsage: jjaeng-mcp [--version|--help]\n\nWith no arguments, serve MCP over stdio.");
+                let product_name = if binary_name == "agent-screen" {
+                    "Agent Screen"
+                } else {
+                    "Jjaeng"
+                };
+                println!(
+                    "{product_name} MCP server\n\nUsage: {binary_name} [--version|--help]\n\nWith no arguments, serve MCP over stdio."
+                );
                 return Ok(());
             }
             _ => {}
@@ -816,7 +876,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_writer(std::io::stderr)
         .with_ansi(false)
         .init();
-    let server = JjaengServer::new();
+    let server = JjaengServer::with_server_name(server_name);
     let service = server.serve(rmcp::transport::stdio()).await?;
     service.waiting().await?;
     Ok(())
@@ -1736,5 +1796,23 @@ mod tests {
     fn artifact_ids_are_path_safe() {
         assert!(validate_id("recording-123").is_ok());
         assert!(validate_id("../secret").is_err());
+    }
+
+    #[test]
+    fn agent_screen_resources_use_agent_screen_scheme() {
+        let resources = resource_definitions("agent-screen");
+        assert_eq!(
+            resources.first().map(|resource| resource.uri.as_str()),
+            Some("agent-screen://status")
+        );
+        assert_eq!(
+            resources.last().map(|resource| resource.uri.as_str()),
+            Some("agent-screen://artifact/{artifact_id}")
+        );
+    }
+
+    #[test]
+    fn resource_reader_rejects_unknown_schemes() {
+        assert!(read_resource_contents("https://status", "agent-screen").is_err());
     }
 }

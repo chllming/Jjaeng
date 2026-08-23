@@ -10,6 +10,7 @@ use gtk4::{
     Orientation, Overflow, Overlay, Picture,
 };
 use jjaeng_core::identity::APP_CSS_ROOT;
+use jjaeng_core::preview;
 
 use super::hypr::{focused_monitor_center, request_window_floating_with_geometry};
 use super::layout::compute_media_preview_geometry_for_point;
@@ -139,6 +140,7 @@ pub(super) fn present_recording_result(
     thumbnail_frame.set_hexpand(true);
     thumbnail_frame.set_vexpand(true);
     thumbnail_frame.set_overflow(Overflow::Hidden);
+    thumbnail_frame.set_opacity(f64::from(preview::DEFAULT_PREVIEW_TRANSPARENCY));
     let thumbnail = Picture::for_file(&gtk4::gio::File::for_path(&artifact.thumbnail_path));
     thumbnail.set_keep_aspect_ratio(true);
     thumbnail.set_can_shrink(true);

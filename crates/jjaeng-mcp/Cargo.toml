@@ -11,6 +11,10 @@ homepage = "https://github.com/chllming/Jjaeng"
 name = "jjaeng-mcp"
 path = "src/main.rs"
 
+[[bin]]
+name = "agent-screen"
+path = "src/agent_screen.rs"
+
 [dependencies]
 base64.workspace = true
 rmcp.workspace = true

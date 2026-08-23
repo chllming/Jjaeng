@@ -1,7 +1,7 @@
 # Maintainer: Jjaeng contributors
 pkgname=jjaeng-bin
 pkgver=0.6.0
-pkgrel=2
+pkgrel=3
 pkgdesc="Hyprland screenshot, recording, and MCP utility (prebuilt binary)"
 arch=('x86_64')
 url="https://github.com/chllming/Jjaeng"
@@ -19,5 +19,6 @@ package() {
   install -Dm755 "jjaeng" "$pkgdir/usr/bin/jjaeng"
   install -Dm755 "jjaengd" "$pkgdir/usr/bin/jjaengd"
   install -Dm755 "jjaeng-mcp" "$pkgdir/usr/bin/jjaeng-mcp"
+  install -Dm755 "agent-screen" "$pkgdir/usr/bin/agent-screen"
   install -Dm644 "jjaengd.service" "$pkgdir/usr/lib/systemd/user/jjaengd.service"
 }
