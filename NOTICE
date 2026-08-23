@@ -1,4 +1,4 @@
-Jjaeng is a derivative work of ChalKak.
+Agent Screen is a derivative work of ChalKak.
 
 Upstream project:
 - Name: ChalKak
@@ -10,10 +10,10 @@ This repository preserves the upstream dual-license model:
 - MIT, see LICENSE-MIT
 
 Original copyright notices are retained. Additional modifications in this
-repository are copyright (c) 2026 Jjaeng contributors.
+repository are copyright (c) 2026 Agent Screen contributors.
 
-The current Jjaeng refactor introduces a workspace split with these crates:
-- crates/jjaeng-core
-- crates/jjaeng-daemon
-- crates/jjaeng-ui
-- crates/jjaeng-cli
+The current Agent Screen refactor introduces a workspace split with these crates:
+- crates/agent-screen-core
+- crates/agent-screen-daemon
+- crates/agent-screen-ui
+- crates/agent-screen-cli

@@ -1,0 +1,20 @@
+[package]
+name = "agent-screen-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "CLI frontend for Agent Screen"
+repository = "https://github.com/chllming/Jjaeng"
+homepage = "https://github.com/chllming/Jjaeng"
+
+[[bin]]
+name = "agent-screen"
+path = "src/main.rs"
+
+[[bin]]
+name = "jjaeng"
+path = "src/main.rs"
+
+[dependencies]
+agent-screen-core = { path = "../agent-screen-core", version = "0.6.0" }
+agent-screen-ui = { path = "../agent-screen-ui", version = "0.6.0" }

@@ -1,10 +1,10 @@
 [Unit]
-Description=Jjaeng capture daemon
+Description=Agent Screen capture daemon (legacy service alias)
 After=graphical-session.target
 PartOf=graphical-session.target
 
 [Service]
-ExecStart=/usr/bin/jjaengd
+ExecStart=/usr/bin/agent-screend
 Restart=on-failure
 RestartSec=2
 Environment=GDK_BACKEND=wayland

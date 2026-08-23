@@ -2,29 +2,29 @@
 
 This repo now exposes two pieces needed for Omarchy/Waybar integration:
 
-- `jjaeng --daemon`
-- `jjaeng --status-json`
+- `agent-screen --daemon`
+- `agent-screen --status-json`
 
 A helper script is included at:
 
-- `scripts/jjaeng-waybar-status.sh`
+- `scripts/agent-screen-waybar-status.sh`
 
 ## Start the daemon
 
-Run Jjaeng as a hidden daemon:
+Run Agent Screen as a hidden daemon:
 
 ```bash
-jjaeng --daemon
+agent-screen --daemon
 ```
 
 Then normal capture commands can target the running daemon:
 
 ```bash
-jjaeng --region
-jjaeng --copy-latest
-jjaeng --save-latest
-jjaeng --dismiss-latest
-jjaeng --edit-latest
+agent-screen --region
+agent-screen --copy-latest
+agent-screen --save-latest
+agent-screen --dismiss-latest
+agent-screen --edit-latest
 ```
 
 ## Waybar custom module
@@ -32,20 +32,20 @@ jjaeng --edit-latest
 Example Waybar module:
 
 ```json
-"custom/jjaeng": {
-  "exec": "~/Code/Jjaeng/scripts/jjaeng-waybar-status.sh",
+"custom/agent-screen": {
+  "exec": "~/Code/Agent Screen/scripts/agent-screen-waybar-status.sh",
   "return-type": "json",
   "interval": 2,
-  "on-click": "jjaeng --open-preview",
-  "on-click-right": "jjaeng --edit-latest",
-  "on-click-middle": "jjaeng --region"
+  "on-click": "agent-screen --open-preview",
+  "on-click-right": "agent-screen --edit-latest",
+  "on-click-middle": "agent-screen --region"
 }
 ```
 
 Example placement in a module list:
 
 ```json
-"modules-right": ["custom/jjaeng", "tray", "clock"]
+"modules-right": ["custom/agent-screen", "tray", "clock"]
 ```
 
 ## Omarchy notes

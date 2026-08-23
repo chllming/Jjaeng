@@ -1,8 +1,8 @@
-# Jjaeng 사용자 가이드
+# Agent Screen 사용자 가이드
 
 [English Guide](USER_GUIDE.md)
 
-Jjaeng은 Wayland + Hyprland 환경을 위한 미리보기 중심 스크린샷 도구입니다. 캡처, 확인, 주석, 공유를 키보드 중심으로 처리합니다.
+Agent Screen은 Wayland + Hyprland 환경을 위한 미리보기 중심 스크린샷 도구입니다. 캡처, 확인, 주석, 공유를 키보드 중심으로 처리합니다.
 
 ## 데모 영상
 
@@ -34,7 +34,7 @@ Jjaeng은 Wayland + Hyprland 환경을 위한 미리보기 중심 스크린샷 �
 
 처음 설정이라면 이것만 하세요:
 
-1. Jjaeng 설치 후 경로 확인: `which jjaeng`
+1. Agent Screen 설치 후 경로 확인: `which agent-screen`
 2. Hyprland 키바인딩 설정 ([10장](#10-hyprland-키바인딩-설정)).
 3. Hyprland 리로드: `hyprctl reload`
 4. `Print` 키를 눌러 영역을 캡처하면 미리보기 창이 자동으로 열립니다.
@@ -69,7 +69,7 @@ Jjaeng은 Wayland + Hyprland 환경을 위한 미리보기 중심 스크린샷 �
 
 | 패키지 | 용도 |
 |--------|------|
-| `jjaeng-ocr-models` | OCR 텍스트 인식 (PaddleOCR v5 모델 파일) |
+| `agent-screen-ocr-models` | OCR 텍스트 인식 (PaddleOCR v5 모델 파일) |
 
 **한 번에 검증:**
 
@@ -86,45 +86,45 @@ hyprctl version && grim -h && slurp -h && wl-copy --help && echo "All dependenci
 [GitHub Releases](https://github.com/chllming/Jjaeng/releases)에서 최신 `x86_64` Linux 바이너리를 다운로드할 수 있습니다:
 
 ```bash
-curl -LO https://github.com/chllming/Jjaeng/releases/latest/download/jjaeng-x86_64-unknown-linux-gnu.tar.gz
-tar xzf jjaeng-x86_64-unknown-linux-gnu.tar.gz
-sudo install -Dm755 jjaeng /usr/local/bin/jjaeng
+curl -LO https://github.com/chllming/Jjaeng/releases/latest/download/agent-screen-x86_64-unknown-linux-gnu.tar.gz
+tar xzf agent-screen-x86_64-unknown-linux-gnu.tar.gz
+sudo install -Dm755 agent-screen /usr/local/bin/agent-screen
 ```
 
 ### AUR에서 설치
 
 ```bash
 # 소스 빌드 패키지
-yay -S jjaeng
+yay -S agent-screen
 
 # 또는 사전 빌드 바이너리 패키지 (빠른 설치, 빌드 의존성 불필요)
-yay -S jjaeng-bin
+yay -S agent-screen-bin
 
 # 선택: OCR 텍스트 인식용 모델 파일 설치
-yay -S jjaeng-ocr-models
+yay -S agent-screen-ocr-models
 ```
 
 ### 소스에서 빌드
 
 ```bash
-git clone <repo-url> jjaeng
-cd jjaeng
-cargo build --release -p jjaeng-cli
-# 바이너리 위치: target/release/jjaeng
+git clone <repo-url> agent-screen
+cd agent-screen
+cargo build --release -p agent-screen-cli
+# 바이너리 위치: target/release/agent-screen
 ```
 
 ### 확인
 
 ```bash
-jjaeng --version
-# 예상 결과: Jjaeng 0.6.0
+agent-screen --version
+# 예상 결과: Agent Screen 0.6.0
 ```
 
 ---
 
 ## 4. 캡처 모드
 
-Jjaeng은 스크린샷 캡처 모드, 녹화 모드, 런치패드 모드를 지원합니다:
+Agent Screen은 스크린샷 캡처 모드, 녹화 모드, 런치패드 모드를 지원합니다:
 
 | 플래그 | 축약형 | 동작 |
 |--------|--------|------|
@@ -132,28 +132,28 @@ Jjaeng은 스크린샷 캡처 모드, 녹화 모드, 런치패드 모드를 지�
 | `--capture-window` | `--window` | 창 선택 즉시 시작 |
 | `--capture-full` | `--full` | 전체 화면 즉시 캡처 |
 | `--launchpad` | — | 런치패드 창 열기 (주로 개발용) |
-| `--version` | `-V` | 버전 문자열 출력 (예: `Jjaeng 0.6.0`) 후 종료 |
+| `--version` | `-V` | 버전 문자열 출력 (예: `Agent Screen 0.6.0`) 후 종료 |
 | `--help` | `-h` | 사용법 출력 후 종료 |
 
 ```bash
-jjaeng --region        # 영역 선택 후 캡처 (권장)
-jjaeng --window        # 창 선택 후 캡처
-jjaeng --full          # 전체 화면 캡처
-jjaeng --launchpad     # 런치패드 UI (주로 개발용)
-jjaeng --version       # 버전 출력 후 종료
-jjaeng --help          # 사용법 출력 후 종료
+agent-screen --region        # 영역 선택 후 캡처 (권장)
+agent-screen --window        # 창 선택 후 캡처
+agent-screen --full          # 전체 화면 캡처
+agent-screen --launchpad     # 런치패드 UI (주로 개발용)
+agent-screen --version       # 버전 출력 후 종료
+agent-screen --help          # 사용법 출력 후 종료
 ```
 
 녹화 명령도 같은 방식으로 제공됩니다:
 
 ```bash
-jjaeng --record-full
-jjaeng --record-region
-jjaeng --record-window
-jjaeng --record-full-prompt
-jjaeng --record-region-prompt
-jjaeng --record-window-prompt
-jjaeng --stop-recording
+agent-screen --record-full
+agent-screen --record-region
+agent-screen --record-window
+agent-screen --record-full-prompt
+agent-screen --record-region-prompt
+agent-screen --record-window-prompt
+agent-screen --stop-recording
 ```
 
 `--record-*-prompt`는 녹화를 시작하기 전에 크기, 인코딩, 오디오 설정을 확인하는 프롬프트를 먼저 띄웁니다. 일반 `--record-*`는 현재 기본값으로 즉시 시작합니다.
@@ -168,7 +168,7 @@ Hyprland 단축키에 캡처 명령을 바인딩해두고 키보드로 바로 �
 
 ## 5. 워크플로우 개요
 
-Jjaeng은 **캡처 → 미리보기 → (선택) 편집 → 출력** 흐름을 따릅니다:
+Agent Screen은 **캡처 → 미리보기 → (선택) 편집 → 출력** 흐름을 따릅니다:
 
 ```mermaid
 graph LR
@@ -180,7 +180,7 @@ graph LR
 3. **편집기** — 화살표, 사각형, 텍스트, 블러 등으로 주석 추가.
 4. **출력** — 파일 저장 또는 클립보드 복사.
 
-지난 캡처를 다시 보려면 `jjaeng --toggle-history` 또는 `jjaeng --open-history`를 사용하세요. 히스토리 창에는 스크린샷과 녹화가 함께 표시되며, 스크린샷 썸네일을 더블클릭하면 편집기로 바로 열립니다.
+지난 캡처를 다시 보려면 `agent-screen --toggle-history` 또는 `agent-screen --open-history`를 사용하세요. 히스토리 창에는 스크린샷과 녹화가 함께 표시되며, 스크린샷 썸네일을 더블클릭하면 편집기로 바로 열립니다.
 
 ---
 
@@ -303,7 +303,7 @@ graph LR
 - 드래그로 영역을 지정하면 해당 영역의 텍스트를 인식하여 클립보드에 복사합니다.
 - 미리보기에서 `o`를 누르면 전체 이미지의 텍스트를 추출합니다.
 - 인식된 텍스트는 자동으로 클립보드에 복사되며 토스트 알림이 표시됩니다.
-- `jjaeng-ocr-models` 패키지(PaddleOCR v5 모델 파일)가 필요합니다.
+- `agent-screen-ocr-models` 패키지(PaddleOCR v5 모델 파일)가 필요합니다.
 - 언어는 시스템 `LANG` 환경 변수에서 자동 감지됩니다. `config.json`의 `ocr_language`로 오버라이드 가능합니다 ([14.3절](#143-configjson)).
 - 지원 언어: 한국어 (`ko`), 영어 (`en`), 중국어 (`zh`), 라틴, 키릴 (`ru`), 아랍어 (`ar`), 태국어 (`th`), 그리스어 (`el`), 데바나가리 (`hi`), 타밀어 (`ta`), 텔루구어 (`te`).
 
@@ -330,55 +330,55 @@ graph LR
 
 ## 10. Hyprland 키바인딩 설정
 
-이 섹션은 Jjaeng을 Hyprland 단축키에 연결합니다. 대부분의 사용자에게 설치 후 유일하게 필요한 설정입니다.
+이 섹션은 Agent Screen을 Hyprland 단축키에 연결합니다. 대부분의 사용자에게 설치 후 유일하게 필요한 설정입니다.
 
 ### 10.1 바이너리 경로 확인
 
 ```bash
-which jjaeng
+which agent-screen
 ```
 
-- AUR 설치: 보통 `/usr/bin/jjaeng`
-- Cargo 설치: 보통 `~/.cargo/bin/jjaeng`
+- AUR 설치: 보통 `/usr/bin/agent-screen`
+- Cargo 설치: 보통 `~/.cargo/bin/agent-screen`
 
 ### 10.2 전용 설정 파일 만들기
 
-Jjaeng 바인딩을 별도 파일에 분리하면 메인 설정이 깔끔하게 유지됩니다.
+Agent Screen 바인딩을 별도 파일에 분리하면 메인 설정이 깔끔하게 유지됩니다.
 
 `~/.config/hypr/hyprland.conf`에 이 줄을 한 번만 추가하세요:
 
 ```conf
-source = ~/.config/hypr/jjaeng.conf
+source = ~/.config/hypr/agent-screen.conf
 ```
 
 ### 10.3 권장 프리셋 (Print 키)
 
-아래 내용을 `~/.config/hypr/jjaeng.conf`에 복사하세요:
+아래 내용을 `~/.config/hypr/agent-screen.conf`에 복사하세요:
 
 ```conf
-# Jjaeng 스크린샷 바인딩 (Print 키 기반)
+# Agent Screen 스크린샷 바인딩 (Print 키 기반)
 unbind = , Print
 unbind = SHIFT, Print
 unbind = CTRL, Print
-bindd = , Print, Jjaeng region capture, exec, /usr/bin/jjaeng --capture-region
-bindd = SHIFT, Print, Jjaeng window capture, exec, /usr/bin/jjaeng --capture-window
-bindd = CTRL, Print, Jjaeng full capture, exec, /usr/bin/jjaeng --capture-full
+bindd = , Print, Agent Screen region capture, exec, /usr/bin/agent-screen --capture-region
+bindd = SHIFT, Print, Agent Screen window capture, exec, /usr/bin/agent-screen --capture-window
+bindd = CTRL, Print, Agent Screen full capture, exec, /usr/bin/agent-screen --capture-full
 ```
 
-> 경로가 다르면 `/usr/bin/jjaeng` 부분을 실제 경로로 바꾸세요. `unbind` 줄은 기존 바인딩과의 충돌을 방지합니다.
+> 경로가 다르면 `/usr/bin/agent-screen` 부분을 실제 경로로 바꾸세요. `unbind` 줄은 기존 바인딩과의 충돌을 방지합니다.
 
 **또는 자동 생성:**
 
 ```bash
-JJAENG_BIN="$(command -v jjaeng)"
+JJAENG_BIN="$(command -v agent-screen)"
 mkdir -p "$HOME/.config/hypr"
-cat > "$HOME/.config/hypr/jjaeng.conf" <<EOF
+cat > "$HOME/.config/hypr/agent-screen.conf" <<EOF
 unbind = , Print
 unbind = SHIFT, Print
 unbind = CTRL, Print
-bindd = , Print, Jjaeng region capture, exec, ${JJAENG_BIN} --capture-region
-bindd = SHIFT, Print, Jjaeng window capture, exec, ${JJAENG_BIN} --capture-window
-bindd = CTRL, Print, Jjaeng full capture, exec, ${JJAENG_BIN} --capture-full
+bindd = , Print, Agent Screen region capture, exec, ${JJAENG_BIN} --capture-region
+bindd = SHIFT, Print, Agent Screen window capture, exec, ${JJAENG_BIN} --capture-window
+bindd = CTRL, Print, Agent Screen full capture, exec, ${JJAENG_BIN} --capture-full
 EOF
 ```
 
@@ -391,9 +391,9 @@ macOS 스크린샷 단축키(`⌥⇧3`/`⌥⇧4`)에 익숙해서, 비슷한 배
 unbind = ALT SHIFT, 2
 unbind = ALT SHIFT, 3
 unbind = ALT SHIFT, 4
-bindd = ALT SHIFT, code:11, Chalkak region capture, exec, jjaeng --capture-region
-bindd = ALT SHIFT, code:12, Chalkak window capture, exec, jjaeng --capture-window
-bindd = ALT SHIFT, code:13, Chalkak full capture, exec, jjaeng --capture-full
+bindd = ALT SHIFT, code:11, Chalkak region capture, exec, agent-screen --capture-region
+bindd = ALT SHIFT, code:12, Chalkak window capture, exec, agent-screen --capture-window
+bindd = ALT SHIFT, code:13, Chalkak full capture, exec, agent-screen --capture-full
 ```
 
 > `code:N`은 Hyprland에서 키코드로 직접 바인딩하는 방식입니다. 레이아웃에 관계없이 물리적 키 위치가 고정되므로, 다국어 키보드를 쓰는 경우 유용합니다.
@@ -407,9 +407,9 @@ bindd = ALT SHIFT, code:13, Chalkak full capture, exec, jjaeng --capture-full
 unbind = ALT SHIFT, R
 unbind = ALT SHIFT, W
 unbind = ALT SHIFT, F
-bindd = ALT SHIFT, R, Jjaeng region capture, exec, /usr/bin/jjaeng --capture-region
-bindd = ALT SHIFT, W, Jjaeng window capture, exec, /usr/bin/jjaeng --capture-window
-bindd = ALT SHIFT, F, Jjaeng full capture, exec, /usr/bin/jjaeng --capture-full
+bindd = ALT SHIFT, R, Agent Screen region capture, exec, /usr/bin/agent-screen --capture-region
+bindd = ALT SHIFT, W, Agent Screen window capture, exec, /usr/bin/agent-screen --capture-window
+bindd = ALT SHIFT, F, Agent Screen full capture, exec, /usr/bin/agent-screen --capture-full
 ```
 </details>
 
@@ -420,9 +420,9 @@ bindd = ALT SHIFT, F, Jjaeng full capture, exec, /usr/bin/jjaeng --capture-full
 unbind = ALT SHIFT, 2
 unbind = ALT SHIFT, 3
 unbind = ALT SHIFT, 4
-bindd = ALT SHIFT, 2, Jjaeng region capture, exec, /usr/bin/jjaeng --capture-region
-bindd = ALT SHIFT, 3, Jjaeng window capture, exec, /usr/bin/jjaeng --capture-window
-bindd = ALT SHIFT, 4, Jjaeng full capture, exec, /usr/bin/jjaeng --capture-full
+bindd = ALT SHIFT, 2, Agent Screen region capture, exec, /usr/bin/agent-screen --capture-region
+bindd = ALT SHIFT, 3, Agent Screen window capture, exec, /usr/bin/agent-screen --capture-window
+bindd = ALT SHIFT, 4, Agent Screen full capture, exec, /usr/bin/agent-screen --capture-full
 ```
 </details>
 
@@ -431,7 +431,7 @@ bindd = ALT SHIFT, 4, Jjaeng full capture, exec, /usr/bin/jjaeng --capture-full
 
 ```conf
 unbind = , Print
-bindd = , Print, Jjaeng region capture, exec, /usr/bin/jjaeng --capture-region
+bindd = , Print, Agent Screen region capture, exec, /usr/bin/agent-screen --capture-region
 ```
 </details>
 
@@ -439,14 +439,14 @@ bindd = , Print, Jjaeng region capture, exec, /usr/bin/jjaeng --capture-region
 
 ```bash
 hyprctl reload
-hyprctl binds -j | jq -r '.[] | select(.description|test("Jjaeng")) | [.description,.arg] | @tsv'
+hyprctl binds -j | jq -r '.[] | select(.description|test("Agent Screen")) | [.description,.arg] | @tsv'
 ```
 
-출력에 `Jjaeng ... capture` 항목과 올바른 경로가 보이면 바인딩이 활성화된 것입니다.
+출력에 `Agent Screen ... capture` 항목과 올바른 경로가 보이면 바인딩이 활성화된 것입니다.
 
 ### 10.7 Omarchy 사용자
 
-Omarchy를 사용하는 경우, `source = ~/.config/hypr/jjaeng.conf`가 Hyprland 설정 체인에서 로드되는지 확인하세요. 심볼릭 링크로 dotfiles를 관리하는 경우 링크 원본을 편집하세요. Cargo에서 AUR로 전환 후 키바인딩이 작동하지 않으면 바인딩의 경로가 오래된 것인지 확인하세요.
+Omarchy를 사용하는 경우, `source = ~/.config/hypr/agent-screen.conf`가 Hyprland 설정 체인에서 로드되는지 확인하세요. 심볼릭 링크로 dotfiles를 관리하는 경우 링크 원본을 편집하세요. Cargo에서 AUR로 전환 후 키바인딩이 작동하지 않으면 바인딩의 경로가 오래된 것인지 확인하세요.
 
 ---
 
@@ -454,19 +454,19 @@ Omarchy를 사용하는 경우, `source = ~/.config/hypr/jjaeng.conf`가 Hyprlan
 
 | 종류 | 경로 | 예시 |
 |------|------|------|
-| 임시 캡처 | `$XDG_RUNTIME_DIR/` (fallback: `/tmp/jjaeng/`) | `capture_<id>.png` |
+| 임시 캡처 | `$XDG_RUNTIME_DIR/` (fallback: `/tmp/agent-screen/`) | `capture_<id>.png` |
 | 저장된 스크린샷 | `$HOME/Pictures/` | `capture-1739698252000000000.png` |
-| 설정 디렉터리 | `$XDG_CONFIG_HOME/jjaeng/` (fallback: `$HOME/.config/jjaeng/`) | `theme.json`, `keybindings.json` |
+| 설정 디렉터리 | `$XDG_CONFIG_HOME/agent-screen/` (fallback: `$HOME/.config/agent-screen/`) | `theme.json`, `keybindings.json` |
 
-Jjaeng은 필요한 디렉터리를 자동으로 생성합니다.
+Agent Screen은 필요한 디렉터리를 자동으로 생성합니다.
 
-**임시 파일 정리:** Jjaeng은 미리보기를 닫거나 삭제할 때 해당 캡처의 임시 파일을 제거합니다. 또한 시작 시 24시간 이상 된 오래된 `capture_*.png` 파일을 자동 정리합니다.
+**임시 파일 정리:** Agent Screen은 미리보기를 닫거나 삭제할 때 해당 캡처의 임시 파일을 제거합니다. 또한 시작 시 24시간 이상 된 오래된 `capture_*.png` 파일을 자동 정리합니다.
 
 ---
 
 ## 12. 클립보드 동작
 
-Jjaeng은 `wl-copy`를 통해 클립보드에 복사합니다. MIME 타입은 파일 종류에 따라 결정됩니다:
+Agent Screen은 `wl-copy`를 통해 클립보드에 복사합니다. MIME 타입은 파일 종류에 따라 결정됩니다:
 
 | 파일 종류 | MIME 타입 | 내용 | 사용처 |
 |-----------|-----------|------|--------|
@@ -517,15 +517,15 @@ Print → 영역 선택 → o (OCR) → 클립보드 복사
 Print → 영역 선택 → c (복사) → Claude Code / Codex CLI에 붙여넣기
 ```
 
-많은 코딩 에이전트가 클립보드 이미지를 직접 받습니다. Jjaeng은 PNG 바이트를 클립보드에 복사하므로 파일 저장 없이 바로 붙여넣기가 가능합니다.
+많은 코딩 에이전트가 클립보드 이미지를 직접 받습니다. Agent Screen은 PNG 바이트를 클립보드에 복사하므로 파일 저장 없이 바로 붙여넣기가 가능합니다.
 
 ---
 
 ## 14. 설정
 
-Jjaeng은 설정 파일 없이도 동작합니다. 아래 설정은 모두 선택적 오버라이드입니다.
+Agent Screen은 설정 파일 없이도 동작합니다. 아래 설정은 모두 선택적 오버라이드입니다.
 
-**설정 디렉터리:** `$XDG_CONFIG_HOME/jjaeng/` (기본값: `~/.config/jjaeng/`)
+**설정 디렉터리:** `$XDG_CONFIG_HOME/agent-screen/` (기본값: `~/.config/agent-screen/`)
 
 ### 14.1 `theme.json`
 
@@ -541,7 +541,7 @@ Jjaeng은 설정 파일 없이도 동작합니다. 아래 설정은 모두 선�
 
 `mode` 값: `system`, `light`, `dark`. `system`으로 설정하면 데스크톱 테마를 따르며, 감지에 실패하면 다크 모드로 폴백합니다.
 
-Omarchy가 설치되어 있으면 Jjaeng은 현재 Omarchy 팔레트와 메뉴 스타일을 런타임 기본 테마로 읽습니다. `theme.json` 오버라이드는 그 위에 덧씌워지므로 바꾸고 싶은 값만 지정하면 됩니다.
+Omarchy가 설치되어 있으면 Agent Screen은 현재 Omarchy 팔레트와 메뉴 스타일을 런타임 기본 테마로 읽습니다. `theme.json` 오버라이드는 그 위에 덧씌워지므로 바꾸고 싶은 값만 지정하면 됩니다.
 
 **전체 예시** (`common` 공통값과 모드별 오버라이드):
 
@@ -637,12 +637,12 @@ Omarchy가 설치되어 있으면 Jjaeng은 현재 Omarchy 팔레트와 메뉴 �
 - 키 이름 별칭이 자동 정규화됨: `ctrl`/`control`, `cmd`/`command`/`win` → `super`, `option` → `alt`.
 - 각 단축키 조합은 수정자 외 메인 키를 정확히 1개 포함해야 함 (예: `ctrl+plus`).
 - 단축키 배열은 비어있으면 안 됨.
-- 파싱 실패 시 Jjaeng이 경고를 로그하고 기본값으로 폴백.
+- 파싱 실패 시 Agent Screen이 경고를 로그하고 기본값으로 폴백.
 
 **편집 후 검증:**
 
 ```bash
-jq empty "${XDG_CONFIG_HOME:-$HOME/.config}/jjaeng/keybindings.json"
+jq empty "${XDG_CONFIG_HOME:-$HOME/.config}/agent-screen/keybindings.json"
 ```
 
 ### 14.3 `config.json`
@@ -683,7 +683,7 @@ OCR 인식 언어를 오버라이드합니다. 생략 시 시스템 `LANG` 환�
 |-----------|------|
 | 의존성 누락 | [2장](#2-시스템-요구사항)의 검증 명령 실행 |
 | Hyprland 세션 외부 | `HYPRLAND_INSTANCE_SIGNATURE` 확인: `echo $HYPRLAND_INSTANCE_SIGNATURE` |
-| slurp 선택 취소 | `jjaeng --region`으로 재시도 후 선택 완료 |
+| slurp 선택 취소 | `agent-screen --region`으로 재시도 후 선택 완료 |
 
 ### 클립보드 복사 실패
 
@@ -703,14 +703,14 @@ OCR 인식 언어를 오버라이드합니다. 생략 시 시스템 `LANG` 환�
 
 | 확인 사항 | 해결 |
 |-----------|------|
-| "Model files not found" 토스트 | `jjaeng-ocr-models` 패키지를 설치하거나, `~/.local/share/jjaeng/models/`에 모델 파일 배치 |
+| "Model files not found" 토스트 | `agent-screen-ocr-models` 패키지를 설치하거나, `~/.local/share/agent-screen/models/`에 모델 파일 배치 |
 | 잘못된 언어가 인식됨 | `config.json`에서 `ocr_language` 설정 ([14.3절](#143-configjson)) 또는 시스템 `LANG` 확인 |
 | 유효한 텍스트인데 "No text found" | 더 큰 선택 영역 시도; 매우 작거나 대비가 낮은 텍스트는 감지되지 않을 수 있음 |
 
 ### 임시 파일 누적
 
-Jjaeng은 닫기/삭제 시 임시 파일을 자동 정리하고, 시작 시 오래된 파일을 자동 제거합니다. 그래도 누적되면:
+Agent Screen은 닫기/삭제 시 임시 파일을 자동 정리하고, 시작 시 오래된 파일을 자동 제거합니다. 그래도 누적되면:
 
-1. `XDG_RUNTIME_DIR`이 설정되어 있는지 확인 (`/tmp/jjaeng/` 폴백 방지).
+1. `XDG_RUNTIME_DIR`이 설정되어 있는지 확인 (`/tmp/agent-screen/` 폴백 방지).
 2. 강제 종료 대신 정상 종료 사용.
-3. 수동 정리: `rm $XDG_RUNTIME_DIR/capture_*.png` (또는 `/tmp/jjaeng/capture_*.png`).
+3. 수동 정리: `rm $XDG_RUNTIME_DIR/capture_*.png` (또는 `/tmp/agent-screen/capture_*.png`).

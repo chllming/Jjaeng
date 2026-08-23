@@ -1,8 +1,8 @@
-# Jjaeng User Guide
+# Agent Screen User Guide
 
 [한국어 가이드](USER_GUIDE.ko.md)
 
-Jjaeng is a preview-first screenshot and recording tool for Wayland + Hyprland. Capture, review, annotate, save, and share — all from the keyboard.
+Agent Screen is a preview-first screenshot and recording tool for Wayland + Hyprland. Capture, review, annotate, save, and share — all from the keyboard.
 
 ## Demo
 
@@ -32,14 +32,14 @@ Jjaeng is a preview-first screenshot and recording tool for Wayland + Hyprland. 
 
 ## 1. Quick Start
 
-If you are setting up Jjaeng for the first time:
+If you are setting up Agent Screen for the first time:
 
-1. Install Jjaeng and confirm the binary: `which jjaeng`
+1. Install Agent Screen and confirm the binary: `which agent-screen`
 2. Set up Hyprland keybindings ([Section 10](#10-hyprland-keybinding-setup)).
 3. Reload Hyprland: `hyprctl reload`
 4. Press `Print` to capture a region. The preview window opens automatically.
 5. In Preview: `s` to save, `c` to copy, `e` or `double-click` to open the editor.
-6. For recordings, start `jjaeng --record-region-prompt`, use the compact recording bar to pick audio/quality if needed, watch the live timer, then stop and use the recording result window to `Save`, `Copy Path`, or `Open` the finished video.
+6. For recordings, start `agent-screen --record-region-prompt`, use the compact recording bar to pick audio/quality if needed, watch the live timer, then stop and use the recording result window to `Save`, `Copy Path`, or `Open` the finished video.
 
 That's it. The recommended workflow is keybinding-driven — bind capture commands to hotkeys and trigger them directly. Everything else in this guide is optional.
 
@@ -72,7 +72,7 @@ That's it. The recommended workflow is keybinding-driven — bind capture comman
 
 | Package | Purpose |
 |---------|---------|
-| `jjaeng-ocr-models` | OCR text recognition (PaddleOCR v5 model files) |
+| `agent-screen-ocr-models` | OCR text recognition (PaddleOCR v5 model files) |
 
 **Verify everything at once:**
 
@@ -89,45 +89,45 @@ hyprctl version && grim -h && slurp -h && wl-copy --help && pactl info >/dev/nul
 Download the latest `x86_64` Linux binary from [GitHub Releases](https://github.com/chllming/Jjaeng/releases):
 
 ```bash
-curl -LO https://github.com/chllming/Jjaeng/releases/latest/download/jjaeng-x86_64-unknown-linux-gnu.tar.gz
-tar xzf jjaeng-x86_64-unknown-linux-gnu.tar.gz
-sudo install -Dm755 jjaeng /usr/local/bin/jjaeng
+curl -LO https://github.com/chllming/Jjaeng/releases/latest/download/agent-screen-x86_64-unknown-linux-gnu.tar.gz
+tar xzf agent-screen-x86_64-unknown-linux-gnu.tar.gz
+sudo install -Dm755 agent-screen /usr/local/bin/agent-screen
 ```
 
 ### From AUR
 
 ```bash
 # Source build package
-yay -S jjaeng
+yay -S agent-screen
 
 # Or pre-built binary package (faster, no build dependencies)
-yay -S jjaeng-bin
+yay -S agent-screen-bin
 
 # Optional: install OCR model files for text recognition
-yay -S jjaeng-ocr-models
+yay -S agent-screen-ocr-models
 ```
 
 ### From source
 
 ```bash
-git clone <repo-url> jjaeng
-cd jjaeng
-cargo build --release -p jjaeng-cli
-# Binary is at target/release/jjaeng
+git clone <repo-url> agent-screen
+cd agent-screen
+cargo build --release -p agent-screen-cli
+# Binary is at target/release/agent-screen
 ```
 
 ### Verify
 
 ```bash
-jjaeng --version
-# Expected: Jjaeng 0.6.0
+agent-screen --version
+# Expected: Agent Screen 0.6.0
 ```
 
 ---
 
 ## 4. Capture Modes
 
-Jjaeng supports screenshot capture modes, recording modes, and a launchpad mode:
+Agent Screen supports screenshot capture modes, recording modes, and a launchpad mode:
 
 | Flag | Short form | Behavior |
 |------|------------|----------|
@@ -135,39 +135,39 @@ Jjaeng supports screenshot capture modes, recording modes, and a launchpad mode:
 | `--capture-window` | `--window` | Immediately starts window selection |
 | `--capture-full` | `--full` | Immediately captures the entire screen |
 | `--launchpad` | — | Opens the launchpad window (primarily for development) |
-| `--version` | `-V` | Print version string (e.g. `Jjaeng 0.6.0`) and exit |
+| `--version` | `-V` | Print version string (e.g. `Agent Screen 0.6.0`) and exit |
 | `--help` | `-h` | Print usage summary and exit |
 
 ```bash
-jjaeng --region        # Select and capture a region (recommended)
-jjaeng --window        # Select and capture a window
-jjaeng --full          # Capture full screen
-jjaeng --launchpad     # Launchpad UI (primarily for development)
-jjaeng --version       # Print version and exit
-jjaeng --help          # Print usage and exit
+agent-screen --region        # Select and capture a region (recommended)
+agent-screen --window        # Select and capture a window
+agent-screen --full          # Capture full screen
+agent-screen --launchpad     # Launchpad UI (primarily for development)
+agent-screen --version       # Print version and exit
+agent-screen --help          # Print usage and exit
 ```
 
 Recording commands follow the same pattern:
 
 ```bash
-jjaeng --record-full
-jjaeng --record-region
-jjaeng --record-window
-jjaeng --record-full-prompt
-jjaeng --record-region-prompt
-jjaeng --record-window-prompt
-jjaeng --stop-recording
+agent-screen --record-full
+agent-screen --record-region
+agent-screen --record-window
+agent-screen --record-full-prompt
+agent-screen --record-region-prompt
+agent-screen --record-window-prompt
+agent-screen --stop-recording
 ```
 
 `--record-*-prompt` opens the compact recording bar first so you can confirm scale, quality, and audio source before capture starts. Press `Esc` before recording begins to cancel both the armed capture area and the recording bar. Plain `--record-*` uses the current defaults immediately, then keeps the same live control bar on screen once recording begins.
 
 The recording bar uses icon controls: target indicator, separate system-audio and microphone toggles with adjacent source dropdown chevrons, scale, quality, live timer, and record / pause / stop actions.
 
-At the moment Jjaeng exposes system audio and microphone as separate controls, but only one audio path can be active at a time with the current recording backend.
+At the moment Agent Screen exposes system audio and microphone as separate controls, but only one audio path can be active at a time with the current recording backend.
 
-Jjaeng uses whichever supported recording backend is available, preferring `gpu-screen-recorder` and falling back to `wl-screenrec`.
+Agent Screen uses whichever supported recording backend is available, preferring `gpu-screen-recorder` and falling back to `wl-screenrec`.
 
-During an active recording, the same bar stays visible and shows the live elapsed time. `Esc` stops an active recording from that bar. When you stop, Jjaeng opens a recording result window with a thumbnail plus `Save`, `Copy Path`, `Open`, and `Close` actions for the finished video.
+During an active recording, the same bar stays visible and shows the live elapsed time. `Esc` stops an active recording from that bar. When you stop, Agent Screen opens a recording result window with a thumbnail plus `Save`, `Copy Path`, `Open`, and `Close` actions for the finished video.
 
 The recommended approach is to bind these commands to Hyprland hotkeys ([Section 10](#10-hyprland-keybinding-setup)) and trigger captures directly from the keyboard. The `--launchpad` mode provides a button-based UI but is mainly intended for development and testing.
 
@@ -179,7 +179,7 @@ If multiple capture flags are given, the last one wins.
 
 ## 5. Workflow Overview
 
-Jjaeng follows two main flows:
+Agent Screen follows two main flows:
 
 ```mermaid
 graph LR
@@ -198,7 +198,7 @@ graph LR
 5. **Record** — start a screen recording with current defaults or from the compact recording bar.
 6. **Recording Result** — stop the recording and use the result window to save, copy the video path, or open the finished file.
 
-To revisit prior captures, use `jjaeng --toggle-history` or `jjaeng --open-history`. The history window shows both screenshots and recordings, and double-clicking a screenshot thumbnail opens it in the editor.
+To revisit prior captures, use `agent-screen --toggle-history` or `agent-screen --open-history`. The history window shows both screenshots and recordings, and double-clicking a screenshot thumbnail opens it in the editor.
 
 Recordings are persisted into history first, so if you close the result window you can still reopen the video from history later. The `Save` action copies the video into your configured recording directory, which defaults to `~/Videos/`.
 
@@ -229,7 +229,7 @@ Preview is a useful safety gate: verify the capture content before committing to
 
 ### Recording Result Window
 
-When a recording stops successfully, Jjaeng opens a separate result window for the finished video.
+When a recording stops successfully, Agent Screen opens a separate result window for the finished video.
 
 The result actions are shown as lightweight icon controls, but they map to the same behavior:
 
@@ -347,7 +347,7 @@ If the recording was already persisted automatically, the result window still op
 - Drag to define a region, then text is recognized and copied to clipboard.
 - In Preview, press `o` to extract text from the entire image.
 - Recognized text is automatically copied to clipboard with a toast notification.
-- Requires `jjaeng-ocr-models` package (PaddleOCR v5 model files).
+- Requires `agent-screen-ocr-models` package (PaddleOCR v5 model files).
 - Language is auto-detected from system `LANG` environment variable. Override via `ocr_language` in `config.json` ([Section 14.3](#143-configjson)).
 - Supported languages: Korean (`ko`), English (`en`), Chinese (`zh`), Latin, Cyrillic (`ru`), Arabic (`ar`), Thai (`th`), Greek (`el`), Devanagari (`hi`), Tamil (`ta`), Telugu (`te`).
 
@@ -374,55 +374,55 @@ Default editor navigation (customizable via `keybindings.json`):
 
 ## 10. Hyprland Keybinding Setup
 
-This section connects Jjaeng to your Hyprland hotkeys. For most users, this is the only setup needed after installation.
+This section connects Agent Screen to your Hyprland hotkeys. For most users, this is the only setup needed after installation.
 
 ### 10.1 Check binary path
 
 ```bash
-which jjaeng
+which agent-screen
 ```
 
-- AUR install: typically `/usr/bin/jjaeng`
-- Cargo install: typically `~/.cargo/bin/jjaeng`
+- AUR install: typically `/usr/bin/agent-screen`
+- Cargo install: typically `~/.cargo/bin/agent-screen`
 
 ### 10.2 Create a dedicated config file
 
-Keep Jjaeng bindings in their own file so your main config stays clean.
+Keep Agent Screen bindings in their own file so your main config stays clean.
 
 Add this line once to `~/.config/hypr/hyprland.conf`:
 
 ```conf
-source = ~/.config/hypr/jjaeng.conf
+source = ~/.config/hypr/agent-screen.conf
 ```
 
 ### 10.3 Recommended preset (Print key)
 
-Copy this into `~/.config/hypr/jjaeng.conf`:
+Copy this into `~/.config/hypr/agent-screen.conf`:
 
 ```conf
-# Jjaeng screenshot bindings (Print-based)
+# Agent Screen screenshot bindings (Print-based)
 unbind = , Print
 unbind = SHIFT, Print
 unbind = CTRL, Print
-bindd = , Print, Jjaeng region capture, exec, /usr/bin/jjaeng --capture-region
-bindd = SHIFT, Print, Jjaeng window capture, exec, /usr/bin/jjaeng --capture-window
-bindd = CTRL, Print, Jjaeng full capture, exec, /usr/bin/jjaeng --capture-full
+bindd = , Print, Agent Screen region capture, exec, /usr/bin/agent-screen --capture-region
+bindd = SHIFT, Print, Agent Screen window capture, exec, /usr/bin/agent-screen --capture-window
+bindd = CTRL, Print, Agent Screen full capture, exec, /usr/bin/agent-screen --capture-full
 ```
 
-> Replace `/usr/bin/jjaeng` with your actual path if different. The `unbind` lines prevent conflicts with existing bindings.
+> Replace `/usr/bin/agent-screen` with your actual path if different. The `unbind` lines prevent conflicts with existing bindings.
 
 **Or generate it automatically:**
 
 ```bash
-JJAENG_BIN="$(command -v jjaeng)"
+JJAENG_BIN="$(command -v agent-screen)"
 mkdir -p "$HOME/.config/hypr"
-cat > "$HOME/.config/hypr/jjaeng.conf" <<EOF
+cat > "$HOME/.config/hypr/agent-screen.conf" <<EOF
 unbind = , Print
 unbind = SHIFT, Print
 unbind = CTRL, Print
-bindd = , Print, Jjaeng region capture, exec, ${JJAENG_BIN} --capture-region
-bindd = SHIFT, Print, Jjaeng window capture, exec, ${JJAENG_BIN} --capture-window
-bindd = CTRL, Print, Jjaeng full capture, exec, ${JJAENG_BIN} --capture-full
+bindd = , Print, Agent Screen region capture, exec, ${JJAENG_BIN} --capture-region
+bindd = SHIFT, Print, Agent Screen window capture, exec, ${JJAENG_BIN} --capture-window
+bindd = CTRL, Print, Agent Screen full capture, exec, ${JJAENG_BIN} --capture-full
 EOF
 ```
 
@@ -435,9 +435,9 @@ I'm used to the macOS screenshot shortcuts (`⌥⇧3`/`⌥⇧4`), so I recreated
 unbind = ALT SHIFT, 2
 unbind = ALT SHIFT, 3
 unbind = ALT SHIFT, 4
-bindd = ALT SHIFT, code:11, Chalkak region capture, exec, jjaeng --capture-region
-bindd = ALT SHIFT, code:12, Chalkak window capture, exec, jjaeng --capture-window
-bindd = ALT SHIFT, code:13, Chalkak full capture, exec, jjaeng --capture-full
+bindd = ALT SHIFT, code:11, Chalkak region capture, exec, agent-screen --capture-region
+bindd = ALT SHIFT, code:12, Chalkak window capture, exec, agent-screen --capture-window
+bindd = ALT SHIFT, code:13, Chalkak full capture, exec, agent-screen --capture-full
 ```
 
 > `code:N` binds by keycode in Hyprland, locking to the physical key position regardless of keyboard layout. Useful if you switch between layouts.
@@ -451,9 +451,9 @@ bindd = ALT SHIFT, code:13, Chalkak full capture, exec, jjaeng --capture-full
 unbind = ALT SHIFT, R
 unbind = ALT SHIFT, W
 unbind = ALT SHIFT, F
-bindd = ALT SHIFT, R, Jjaeng region capture, exec, /usr/bin/jjaeng --capture-region
-bindd = ALT SHIFT, W, Jjaeng window capture, exec, /usr/bin/jjaeng --capture-window
-bindd = ALT SHIFT, F, Jjaeng full capture, exec, /usr/bin/jjaeng --capture-full
+bindd = ALT SHIFT, R, Agent Screen region capture, exec, /usr/bin/agent-screen --capture-region
+bindd = ALT SHIFT, W, Agent Screen window capture, exec, /usr/bin/agent-screen --capture-window
+bindd = ALT SHIFT, F, Agent Screen full capture, exec, /usr/bin/agent-screen --capture-full
 ```
 </details>
 
@@ -464,9 +464,9 @@ bindd = ALT SHIFT, F, Jjaeng full capture, exec, /usr/bin/jjaeng --capture-full
 unbind = ALT SHIFT, 2
 unbind = ALT SHIFT, 3
 unbind = ALT SHIFT, 4
-bindd = ALT SHIFT, 2, Jjaeng region capture, exec, /usr/bin/jjaeng --capture-region
-bindd = ALT SHIFT, 3, Jjaeng window capture, exec, /usr/bin/jjaeng --capture-window
-bindd = ALT SHIFT, 4, Jjaeng full capture, exec, /usr/bin/jjaeng --capture-full
+bindd = ALT SHIFT, 2, Agent Screen region capture, exec, /usr/bin/agent-screen --capture-region
+bindd = ALT SHIFT, 3, Agent Screen window capture, exec, /usr/bin/agent-screen --capture-window
+bindd = ALT SHIFT, 4, Agent Screen full capture, exec, /usr/bin/agent-screen --capture-full
 ```
 </details>
 
@@ -475,7 +475,7 @@ bindd = ALT SHIFT, 4, Jjaeng full capture, exec, /usr/bin/jjaeng --capture-full
 
 ```conf
 unbind = , Print
-bindd = , Print, Jjaeng region capture, exec, /usr/bin/jjaeng --capture-region
+bindd = , Print, Agent Screen region capture, exec, /usr/bin/agent-screen --capture-region
 ```
 </details>
 
@@ -483,14 +483,14 @@ bindd = , Print, Jjaeng region capture, exec, /usr/bin/jjaeng --capture-region
 
 ```bash
 hyprctl reload
-hyprctl binds -j | jq -r '.[] | select(.description|test("Jjaeng")) | [.description,.arg] | @tsv'
+hyprctl binds -j | jq -r '.[] | select(.description|test("Agent Screen")) | [.description,.arg] | @tsv'
 ```
 
-If you see `Jjaeng ... capture` entries with the correct path, bindings are active.
+If you see `Agent Screen ... capture` entries with the correct path, bindings are active.
 
 ### 10.7 Omarchy users
 
-If you use Omarchy, ensure `source = ~/.config/hypr/jjaeng.conf` is loaded within your Hyprland config chain. If you manage config via symlinked dotfiles, edit the link target. If keybindings stopped working after switching from Cargo to AUR install, check for stale paths in your bindings.
+If you use Omarchy, ensure `source = ~/.config/hypr/agent-screen.conf` is loaded within your Hyprland config chain. If you manage config via symlinked dotfiles, edit the link target. If keybindings stopped working after switching from Cargo to AUR install, check for stale paths in your bindings.
 
 ---
 
@@ -498,23 +498,23 @@ If you use Omarchy, ensure `source = ~/.config/hypr/jjaeng.conf` is loaded withi
 
 | Type | Path | Example |
 |------|------|---------|
-| Temp captures | `$XDG_RUNTIME_DIR/` (fallback: `/tmp/jjaeng/`) | `capture_<id>.png` |
-| Temp recordings | `$XDG_RUNTIME_DIR/` (fallback: `/tmp/jjaeng/`) | `recording_<id>.mp4` |
-| Recording history videos | `$XDG_STATE_HOME/jjaeng/history/videos/` (fallback: `$HOME/.local/state/jjaeng/history/videos/`) | `recording-1739698252000000000.mp4` |
-| Recording thumbnails | `$XDG_CACHE_HOME/jjaeng/thumbnails/` (fallback: `$HOME/.cache/jjaeng/thumbnails/`) | `recording-1739698252000000000.png` |
+| Temp captures | `$XDG_RUNTIME_DIR/` (fallback: `/tmp/agent-screen/`) | `capture_<id>.png` |
+| Temp recordings | `$XDG_RUNTIME_DIR/` (fallback: `/tmp/agent-screen/`) | `recording_<id>.mp4` |
+| Recording history videos | `$XDG_STATE_HOME/agent-screen/history/videos/` (fallback: `$HOME/.local/state/agent-screen/history/videos/`) | `recording-1739698252000000000.mp4` |
+| Recording thumbnails | `$XDG_CACHE_HOME/agent-screen/thumbnails/` (fallback: `$HOME/.cache/agent-screen/thumbnails/`) | `recording-1739698252000000000.png` |
 | Saved screenshots | `$HOME/Pictures/` | `capture-1739698252000000000.png` |
 | Saved recordings | `$HOME/Videos/` | `recording-1739698252000000000.mp4` |
-| Config directory | `$XDG_CONFIG_HOME/jjaeng/` (fallback: `$HOME/.config/jjaeng/`) | `theme.json`, `keybindings.json` |
+| Config directory | `$XDG_CONFIG_HOME/agent-screen/` (fallback: `$HOME/.config/agent-screen/`) | `theme.json`, `keybindings.json` |
 
-Jjaeng creates these directories automatically when needed.
+Agent Screen creates these directories automatically when needed.
 
-**Temp file cleanup:** Jjaeng removes screenshot temp files when you close or delete a preview. Recording temp files are cleaned up after the finished video is persisted into history, or kept long enough for the recording result window to finish `Save`, `Copy Path`, or `Open`. Jjaeng also prunes stale `capture_*.png` files (older than 24 hours) at startup.
+**Temp file cleanup:** Agent Screen removes screenshot temp files when you close or delete a preview. Recording temp files are cleaned up after the finished video is persisted into history, or kept long enough for the recording result window to finish `Save`, `Copy Path`, or `Open`. Agent Screen also prunes stale `capture_*.png` files (older than 24 hours) at startup.
 
 ---
 
 ## 12. Clipboard Behavior
 
-Jjaeng copies to the clipboard via `wl-copy`. The MIME type depends on the file being copied:
+Agent Screen copies to the clipboard via `wl-copy`. The MIME type depends on the file being copied:
 
 | File type | MIME type | Content | Used by |
 |-----------|-----------|---------|---------|
@@ -565,12 +565,12 @@ Print → select region → o (OCR) → copied to clipboard
 Print → select region → c (copy) → paste into Claude Code / Codex CLI
 ```
 
-Many coding agents accept clipboard images directly. Jjaeng copies PNG bytes to the clipboard, so paste works without saving to a file first.
+Many coding agents accept clipboard images directly. Agent Screen copies PNG bytes to the clipboard, so paste works without saving to a file first.
 
 ### Record and hand off a clip
 
 ```
-jjaeng --record-region-prompt → Choose source / quality → Record → Stop → Copy Path / Open
+agent-screen --record-region-prompt → Choose source / quality → Record → Stop → Copy Path / Open
 ```
 
 Use the recording bar when you want to confirm audio source or quality first, then use the recording result window to hand off the video immediately after stop.
@@ -579,9 +579,9 @@ Use the recording bar when you want to confirm audio source or quality first, th
 
 ## 14. Configuration
 
-Jjaeng works without any configuration files. All settings below are optional overrides.
+Agent Screen works without any configuration files. All settings below are optional overrides.
 
-**Config directory:** `$XDG_CONFIG_HOME/jjaeng/` (default: `~/.config/jjaeng/`)
+**Config directory:** `$XDG_CONFIG_HOME/agent-screen/` (default: `~/.config/agent-screen/`)
 
 ### 14.1 `theme.json`
 
@@ -595,9 +595,9 @@ Controls theme mode, UI colors, and editor defaults.
 }
 ```
 
-`mode` values: `system`, `light`, `dark`. When set to `system`, Jjaeng follows your desktop theme preference, falling back to dark mode if detection fails.
+`mode` values: `system`, `light`, `dark`. When set to `system`, Agent Screen follows your desktop theme preference, falling back to dark mode if detection fails.
 
-If Omarchy is installed, Jjaeng loads the active Omarchy palette and menu style as its base runtime theme. `theme.json` overrides are applied on top of that base, so you only need to specify values you want to change.
+If Omarchy is installed, Agent Screen loads the active Omarchy palette and menu style as its base runtime theme. `theme.json` overrides are applied on top of that base, so you only need to specify values you want to change.
 
 **Full example** with `common` defaults and per-mode overrides:
 
@@ -693,12 +693,12 @@ Overrides editor navigation defaults. If this file is missing, built-in defaults
 - Key name aliases are normalized: `ctrl`/`control`, `cmd`/`command`/`win` → `super`, `option` → `alt`.
 - Each shortcut chord must have exactly one non-modifier key (e.g., `ctrl+plus`).
 - Shortcut arrays must not be empty.
-- If parsing fails, Jjaeng logs a warning and falls back to defaults.
+- If parsing fails, Agent Screen logs a warning and falls back to defaults.
 
 **Validate after editing:**
 
 ```bash
-jq empty "${XDG_CONFIG_HOME:-$HOME/.config}/jjaeng/keybindings.json"
+jq empty "${XDG_CONFIG_HOME:-$HOME/.config}/agent-screen/keybindings.json"
 ```
 
 ### 14.3 `config.json`
@@ -718,7 +718,7 @@ Application-level settings. If this file is missing, built-in defaults are used.
 
 #### `ocr_language`
 
-Overrides the OCR recognition language. If omitted, Jjaeng auto-detects from the system `LANG` environment variable.
+Overrides the OCR recognition language. If omitted, Agent Screen auto-detects from the system `LANG` environment variable.
 
 | Value | Language |
 |-------|----------|
@@ -758,7 +758,7 @@ Overrides the OCR recognition language. If omitted, Jjaeng auto-detects from the
 |-------|-----|
 | Missing dependency | Run the verification command from [Section 2](#2-requirements) |
 | Not in Hyprland session | Ensure `HYPRLAND_INSTANCE_SIGNATURE` is set: `echo $HYPRLAND_INSTANCE_SIGNATURE` |
-| slurp selection cancelled | Retry with `jjaeng --region` and complete the selection |
+| slurp selection cancelled | Retry with `agent-screen --region` and complete the selection |
 
 ### Clipboard copy fails
 
@@ -779,8 +779,8 @@ Overrides the OCR recognition language. If omitted, Jjaeng auto-detects from the
 | Check | Fix |
 |-------|-----|
 | Looking for a screenshot-style preview | Recordings open in a dedicated result window, not the screenshot preview |
-| Looking in `~/Videos` before pressing `Save` | Finished recordings are written to history first under `$XDG_STATE_HOME/jjaeng/history/videos/` (fallback: `~/.local/state/jjaeng/history/videos/`) |
-| Closed the result window immediately | Reopen the recording from `jjaeng --open-history` or `jjaeng --toggle-history` |
+| Looking in `~/Videos` before pressing `Save` | Finished recordings are written to history first under `$XDG_STATE_HOME/agent-screen/history/videos/` (fallback: `~/.local/state/agent-screen/history/videos/`) |
+| Closed the result window immediately | Reopen the recording from `agent-screen --open-history` or `agent-screen --toggle-history` |
 | `~/Videos` missing | Check the recording output directory and permissions: `ls -ld ~/Videos` |
 
 ### Recording does not start
@@ -795,14 +795,14 @@ Overrides the OCR recognition language. If omitted, Jjaeng auto-detects from the
 
 | Check | Fix |
 |-------|-----|
-| "Model files not found" toast | Install `jjaeng-ocr-models` package, or place model files in `~/.local/share/jjaeng/models/` |
+| "Model files not found" toast | Install `agent-screen-ocr-models` package, or place model files in `~/.local/share/agent-screen/models/` |
 | Wrong language recognized | Set `ocr_language` in `config.json` ([Section 14.3](#143-configjson)) or check system `LANG` |
 | "No text found" on valid text | Try a larger selection area; very small or low-contrast text may not be detected |
 
 ### Temp files accumulate
 
-Jjaeng cleans up temp files automatically on close/delete and prunes stale files at startup. If files still accumulate:
+Agent Screen cleans up temp files automatically on close/delete and prunes stale files at startup. If files still accumulate:
 
-1. Ensure `XDG_RUNTIME_DIR` is set (avoids `/tmp/jjaeng/` fallback).
+1. Ensure `XDG_RUNTIME_DIR` is set (avoids `/tmp/agent-screen/` fallback).
 2. Close previews/editors normally instead of force-killing.
-3. Manual cleanup: `rm $XDG_RUNTIME_DIR/capture_*.png` (or `/tmp/jjaeng/capture_*.png`).
+3. Manual cleanup: `rm $XDG_RUNTIME_DIR/capture_*.png` (or `/tmp/agent-screen/capture_*.png`).

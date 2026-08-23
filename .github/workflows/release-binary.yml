@@ -35,14 +35,14 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Stage user service for the binary archive
-        run: cp packaging/jjaengd.service jjaengd.service
+        run: cp packaging/agent-screend.service agent-screend.service
 
       - name: Build and upload binary
         uses: taiki-e/upload-rust-binary-action@v1
         with:
-          bin: jjaeng,jjaengd,jjaeng-mcp,agent-screen
-          archive: jjaeng-$target
+          bin: agent-screen,jjaeng,agent-screend,jjaengd,agent-screen-mcp,jjaeng-mcp
+          archive: agent-screen-$target
           target: x86_64-unknown-linux-gnu
-          include: jjaengd.service
+          include: agent-screend.service
           checksum: sha256
           token: ${{ secrets.GITHUB_TOKEN }}

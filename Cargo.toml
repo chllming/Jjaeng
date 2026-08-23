@@ -1,12 +1,12 @@
 [workspace]
 members = [
-  "crates/jjaeng-core",
-  "crates/jjaeng-ui",
-  "crates/jjaeng-daemon",
-  "crates/jjaeng-cli",
-  "crates/jjaeng-mcp",
+  "crates/agent-screen-core",
+  "crates/agent-screen-ui",
+  "crates/agent-screen-daemon",
+  "crates/agent-screen-cli",
+  "crates/agent-screen-mcp",
 ]
-default-members = ["crates/jjaeng-cli"]
+default-members = ["crates/agent-screen-cli"]
 resolver = "2"
 
 [workspace.package]
@@ -29,3 +29,4 @@ notify-rust = "4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 glib-build-tools = "0.21"
+toml = "0.8"

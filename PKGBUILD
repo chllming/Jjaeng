@@ -1,8 +1,8 @@
-# Maintainer: Jjaeng contributors
-pkgname=jjaeng
+# Maintainer: Agent Screen contributors
+pkgname=agent-screen
 pkgver=0.6.0
 pkgrel=3
-pkgdesc="Hyprland screenshot, recording, and MCP utility"
+pkgdesc="Hyprland screenshot, recording, and MCP utility for agents"
 arch=('x86_64' 'aarch64')
 options=(!lto)
 url="https://github.com/chllming/Jjaeng"
@@ -12,7 +12,7 @@ depends=('gtk4' 'hyprland' 'grim' 'slurp' 'wl-clipboard')
 makedepends=('rust' 'cargo' 'pkgconf' 'gtk4' 'cmake' 'clang' 'git')
 optdepends=('gpu-screen-recorder: GPU-accelerated Wayland recording and combined audio'
             'ffmpeg: recording thumbnail extraction'
-            'jjaeng-ocr-models: OCR text recognition support')
+            'agent-screen-ocr-models: OCR text recognition support')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('SKIP')
 
@@ -25,10 +25,13 @@ package() {
   cd "$_srcname-$pkgver"
 
   # Install binary
-  install -Dm755 "target/release/jjaeng" "$pkgdir/usr/bin/jjaeng"
-  install -Dm755 "target/release/jjaengd" "$pkgdir/usr/bin/jjaengd"
-  install -Dm755 "target/release/jjaeng-mcp" "$pkgdir/usr/bin/jjaeng-mcp"
   install -Dm755 "target/release/agent-screen" "$pkgdir/usr/bin/agent-screen"
+  install -Dm755 "target/release/jjaeng" "$pkgdir/usr/bin/jjaeng"
+  install -Dm755 "target/release/agent-screend" "$pkgdir/usr/bin/agent-screend"
+  install -Dm755 "target/release/jjaengd" "$pkgdir/usr/bin/jjaengd"
+  install -Dm755 "target/release/agent-screen-mcp" "$pkgdir/usr/bin/agent-screen-mcp"
+  install -Dm755 "target/release/jjaeng-mcp" "$pkgdir/usr/bin/jjaeng-mcp"
+  install -Dm644 "packaging/agent-screend.service" "$pkgdir/usr/lib/systemd/user/agent-screend.service"
   install -Dm644 "packaging/jjaengd.service" "$pkgdir/usr/lib/systemd/user/jjaengd.service"
 
   # Install documentation

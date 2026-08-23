@@ -1,0 +1,13 @@
+[Unit]
+Description=Agent Screen capture daemon
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/agent-screend
+Restart=on-failure
+RestartSec=2
+Environment=GDK_BACKEND=wayland
+
+[Install]
+WantedBy=graphical-session.target

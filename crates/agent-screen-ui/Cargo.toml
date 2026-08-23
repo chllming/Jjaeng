@@ -1,0 +1,18 @@
+[package]
+name = "agent-screen-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "GTK UI runtime for Agent Screen"
+repository = "https://github.com/chllming/Jjaeng"
+homepage = "https://github.com/chllming/Jjaeng"
+
+[dependencies]
+agent-screen-core = { path = "../agent-screen-core", version = "0.6.0" }
+gtk4.workspace = true
+image.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+
+[build-dependencies]
+glib-build-tools.workspace = true
