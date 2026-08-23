@@ -93,6 +93,7 @@ pub(super) fn set_recording_result_saved_path(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn present_recording_result(
     app: &Application,
     style_tokens: StyleTokens,

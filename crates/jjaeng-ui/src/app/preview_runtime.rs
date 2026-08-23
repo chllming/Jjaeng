@@ -24,6 +24,8 @@ use super::runtime_support::{
 use super::window_state::RuntimeWindowState;
 use super::{close_editor_if_open_and_clear, EditorRuntimeState};
 
+type RenderHandle = Rc<RefCell<Option<Rc<dyn Fn()>>>>;
+
 #[derive(Clone)]
 pub(super) struct PreviewRenderContext {
     app: Application,
@@ -33,7 +35,7 @@ pub(super) struct PreviewRenderContext {
     preview_windows: Rc<RefCell<HashMap<String, PreviewWindowRuntime>>>,
     preview_action_target_capture_id: Rc<RefCell<Option<String>>>,
     launchpad_actions: LaunchpadActionExecutor,
-    render_handle: Rc<RefCell<Option<Rc<dyn Fn()>>>>,
+    render_handle: RenderHandle,
     runtime_window_state: Rc<RefCell<RuntimeWindowState>>,
     editor_window: Rc<RefCell<Option<ApplicationWindow>>>,
     editor_close_guard: Rc<Cell<bool>>,
@@ -51,7 +53,7 @@ impl PreviewRenderContext {
         preview_windows: Rc<RefCell<HashMap<String, PreviewWindowRuntime>>>,
         preview_action_target_capture_id: Rc<RefCell<Option<String>>>,
         launchpad_actions: LaunchpadActionExecutor,
-        render_handle: Rc<RefCell<Option<Rc<dyn Fn()>>>>,
+        render_handle: RenderHandle,
         runtime_window_state: Rc<RefCell<RuntimeWindowState>>,
         editor_window: Rc<RefCell<Option<ApplicationWindow>>>,
         editor_close_guard: Rc<Cell<bool>>,

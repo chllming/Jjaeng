@@ -226,15 +226,11 @@ impl EditorTools {
 
     fn clear_active_state_for_object(&mut self, object: &ToolObject) {
         match object {
-            ToolObject::Pen(stroke) => {
-                if self.active_pen_stroke == Some(stroke.id) {
-                    self.active_pen_stroke = None;
-                }
+            ToolObject::Pen(stroke) if self.active_pen_stroke == Some(stroke.id) => {
+                self.active_pen_stroke = None;
             }
-            ToolObject::Text(text) => {
-                if self.active_text_box == Some(text.id) {
-                    self.active_text_box = None;
-                }
+            ToolObject::Text(text) if self.active_text_box == Some(text.id) => {
+                self.active_text_box = None;
             }
             _ => {}
         }

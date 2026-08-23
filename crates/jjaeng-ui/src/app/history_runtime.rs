@@ -457,28 +457,6 @@ fn sync_history_filter_buttons(runtime: &HistoryWindowRuntime) {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ui::LAYOUT_TOKENS;
-
-    #[test]
-    fn history_window_size_for_monitor_keeps_default_size_on_large_monitors() {
-        assert_eq!(
-            history_window_size_for_monitor((1920, 1080), LAYOUT_TOKENS),
-            (HISTORY_WINDOW_WIDTH, HISTORY_WINDOW_HEIGHT)
-        );
-    }
-
-    #[test]
-    fn history_window_size_for_monitor_clamps_to_small_monitors() {
-        assert_eq!(
-            history_window_size_for_monitor((400, 300), LAYOUT_TOKENS),
-            (368, 268)
-        );
-    }
-}
-
 fn build_history_tile(
     context: &HistoryRenderContext,
     render: &Rc<dyn Fn()>,
@@ -853,4 +831,26 @@ fn open_history_entry(context: &HistoryRenderContext, entry: &HistoryEntry) {
     }
 
     *context.status_log.borrow_mut() = format!("editor opened for {}", entry.entry_id);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui::LAYOUT_TOKENS;
+
+    #[test]
+    fn history_window_size_for_monitor_keeps_default_size_on_large_monitors() {
+        assert_eq!(
+            history_window_size_for_monitor((1920, 1080), LAYOUT_TOKENS),
+            (HISTORY_WINDOW_WIDTH, HISTORY_WINDOW_HEIGHT)
+        );
+    }
+
+    #[test]
+    fn history_window_size_for_monitor_clamps_to_small_monitors() {
+        assert_eq!(
+            history_window_size_for_monitor((400, 300), LAYOUT_TOKENS),
+            (368, 268)
+        );
+    }
 }
