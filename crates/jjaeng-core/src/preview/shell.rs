@@ -3,6 +3,7 @@ use super::geometry::{
     MIN_PREVIEW_HEIGHT, MIN_PREVIEW_WIDTH,
 };
 use super::PreviewWindowGeometry;
+use super::DEFAULT_PREVIEW_TRANSPARENCY;
 
 const MIN_PREVIEW_TRANSPARENCY: f32 = 0.2;
 const MAX_PREVIEW_TRANSPARENCY: f32 = 1.0;
@@ -28,7 +29,7 @@ impl PreviewWindowShell {
             },
             controls_visible: false,
             hover_depth: 0,
-            transparency: 1.0,
+            transparency: DEFAULT_PREVIEW_TRANSPARENCY,
         }
     }
 
@@ -112,7 +113,7 @@ mod tests {
         );
         assert!(!shell.controls_visible());
         assert_eq!(shell.hover_depth(), 0);
-        assert_eq!(shell.transparency(), 1.0);
+        assert_eq!(shell.transparency(), DEFAULT_PREVIEW_TRANSPARENCY);
     }
 
     #[test]

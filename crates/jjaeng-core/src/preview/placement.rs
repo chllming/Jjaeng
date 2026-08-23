@@ -5,7 +5,9 @@ use super::PreviewWindowGeometry;
 
 const PREVIEW_MAX_BOUND_SCALE: f64 = 0.72;
 const PREVIEW_MAX_DEFAULT_MULTIPLIER: i32 = 2;
-const PREVIEW_PREFERRED_SCALE: f64 = 0.5;
+// Keep ordinary captures 20% larger while the bounds/cap policies still
+// protect small monitors and very large source images.
+const PREVIEW_PREFERRED_SCALE: f64 = 0.6;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PreviewSourceArea {
@@ -162,10 +164,10 @@ mod tests {
             PreviewSizingTokens::default(),
         );
 
-        assert_eq!(placement.geometry.width, 420);
-        assert_eq!(placement.geometry.height, 236);
-        assert_eq!(placement.geometry.x, 1710);
-        assert_eq!(placement.geometry.y, 962);
+        assert_eq!(placement.geometry.width, 504);
+        assert_eq!(placement.geometry.height, 284);
+        assert_eq!(placement.geometry.x, 1668);
+        assert_eq!(placement.geometry.y, 938);
         assert_eq!(placement.min_width, MIN_PREVIEW_WIDTH);
         assert_eq!(placement.min_height, MIN_PREVIEW_HEIGHT);
     }
@@ -188,10 +190,10 @@ mod tests {
             PreviewSizingTokens::default(),
         );
 
-        assert_eq!(placement.geometry.width, 236);
-        assert_eq!(placement.geometry.height, 118);
-        assert_eq!(placement.geometry.x, 22);
-        assert_eq!(placement.geometry.y, 81);
+        assert_eq!(placement.geometry.width, 284);
+        assert_eq!(placement.geometry.height, 142);
+        assert_eq!(placement.geometry.x, 0);
+        assert_eq!(placement.geometry.y, 69);
         assert_eq!(placement.min_width, MIN_PREVIEW_WIDTH);
         assert_eq!(placement.min_height, MIN_PREVIEW_HEIGHT);
     }
@@ -217,10 +219,10 @@ mod tests {
         assert_eq!(
             placement.geometry,
             PreviewWindowGeometry {
-                x: 360,
-                y: 190,
-                width: 320,
-                height: 180,
+                x: 328,
+                y: 172,
+                width: 384,
+                height: 216,
             }
         );
     }
@@ -243,10 +245,10 @@ mod tests {
             PreviewSizingTokens::default(),
         );
 
-        assert_eq!(placement.geometry.width, 250);
-        assert_eq!(placement.geometry.height, 150);
-        assert_eq!(placement.geometry.x, 1670);
-        assert_eq!(placement.geometry.y, 930);
+        assert_eq!(placement.geometry.width, 300);
+        assert_eq!(placement.geometry.height, 180);
+        assert_eq!(placement.geometry.x, 1620);
+        assert_eq!(placement.geometry.y, 900);
     }
 
     #[test]
@@ -267,10 +269,10 @@ mod tests {
             PreviewSizingTokens::default(),
         );
 
-        assert_eq!(placement.min_width, 210);
-        assert_eq!(placement.min_height, 118);
-        assert_eq!(placement.geometry.width, 216);
-        assert_eq!(placement.geometry.height, 118);
+        assert_eq!(placement.min_width, 252);
+        assert_eq!(placement.min_height, 142);
+        assert_eq!(placement.geometry.width, 252);
+        assert_eq!(placement.geometry.height, 142);
         assert_eq!(placement.geometry.x, 0);
         assert_eq!(placement.geometry.y, 0);
     }
